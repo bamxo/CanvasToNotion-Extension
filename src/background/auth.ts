@@ -150,11 +150,17 @@ checkAuthCookie();
 
 // Check for authentication via user data fetch
 chrome.runtime.onMessage.addListener(
-  async (message, sender, sendResponse) => {
-    console.log('Received message in background auth:', message.type);
+  (message, sender, sendResponse) => {
+    // Only handle CHECK_AUTH messages in this listener
+    if (message.type !== 'CHECK_AUTH') {
+      // Return false to let other listeners handle this message
+      return false;
+    }
     
-    if (message.type === 'CHECK_AUTH') {
-      console.log('Processing CHECK_AUTH request...');
+    console.log('Processing CHECK_AUTH request...');
+    
+    // Handle async operations
+    (async () => {
       try {
         // In production, check for cookie authentication
         if (import.meta.env.MODE === 'production') {
@@ -174,8 +180,9 @@ chrome.runtime.onMessage.addListener(
         console.error('Error in CHECK_AUTH:', error);
         sendResponse({ isAuthenticated: false });
       }
-      return true; // Keep message channel open for async response
-    }
+    })();
+    
+    return true; // Keep message channel open for async response
   }
 );
 

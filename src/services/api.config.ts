@@ -43,6 +43,7 @@ export const getApiEndpoint = async (endpoint: string): Promise<string> => {
 // Common endpoints - now async functions
 export const ENDPOINTS = {
   SYNC: async () => await getApiEndpoint('/sync'),
+  SYNC_V2: async () => await getApiEndpoint('/sync-v2'),
   COMPARE: async () => await getApiEndpoint('/compare'),
   CONNECTED: async () => await getApiEndpoint('/connected'),
   PAGES: async () => await getApiEndpoint('/pages')

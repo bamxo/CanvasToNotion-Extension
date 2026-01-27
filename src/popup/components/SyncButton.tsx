@@ -7,6 +7,7 @@ interface SyncButtonProps {
   disabled: boolean;
   lastSync: string | null;
   syncStatus: 'success' | 'error' | 'partial' | null;
+  progress?: number;
 }
 
 // Use memo to prevent unnecessary re-renders
@@ -15,7 +16,8 @@ const SyncButton = memo(({
   isLoading,
   disabled,
   lastSync,
-  syncStatus
+  syncStatus,
+  progress = 0
 }: SyncButtonProps) => {
   const [showStatus, setShowStatus] = useState(false);
 
@@ -48,6 +50,19 @@ const SyncButton = memo(({
     );
   }
 
+  // Generate button text based on loading state and progress
+  const getButtonText = () => {
+    if (!isLoading) {
+      return 'Sync All Assignments';
+    }
+    
+    if (progress > 0 && progress < 100) {
+      return `Syncing... ${progress}%`;
+    }
+    
+    return 'Syncing...';
+  };
+
   return (
     <>
       <div className={styles.statusContainer}>
@@ -64,8 +79,18 @@ const SyncButton = memo(({
         disabled={disabled}
         className={styles.syncButton}
       >
-        {isLoading ? 'Loading...' : 'Sync All Assignments'}
+        {getButtonText()}
       </button>
+      
+      {/* Progress bar shown during sync */}
+      {isLoading && progress > 0 && (
+        <div className={styles.progressBarContainer}>
+          <div 
+            className={styles.progressBar} 
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </>
   );
 });

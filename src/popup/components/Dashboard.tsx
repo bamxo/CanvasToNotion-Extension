@@ -16,8 +16,7 @@ import SyncButton from './SyncButton'
 import NotionDisconnected from './NotionDisconnected'
 import TermSelector from './TermSelector'
 import { UnsyncedItem, transformCanvasAssignments } from '../utils/assignmentTransformer'
-import { isDevelopment, isProduction, ENDPOINTS } from '../../services/api.config'
-import { configService } from '../../services/config'
+import { ENDPOINTS } from '../../services/api.config'
 
 
 interface NotionPage {
@@ -61,6 +60,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
   const [isComparing, setIsComparing] = useState(false)
   const [lastSync, setLastSync] = useState<string | null>(null)
   const [syncStatus, setSyncStatus] = useState<'success' | 'error' | 'partial' | null>(null)
+  const [syncProgress, setSyncProgress] = useState<number>(0)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [firebaseToken, setFirebaseToken] = useState<string | null>(null)
   const [unsyncedItems, setUnsyncedItems] = useState<UnsyncedItem[]>([])
@@ -172,6 +172,22 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
       checkNotionConnection();
     }
   }, [firebaseToken]);
+
+  // Listen for sync progress updates from background script
+  useEffect(() => {
+    const handleMessage = (message: any) => {
+      if (message.type === 'SYNC_PROGRESS') {
+        console.log('Received sync progress:', message.progress, message.message);
+        setSyncProgress(message.progress);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
+  }, []);
 
   // Load selected term from storage on component mount
   useEffect(() => {
@@ -287,6 +303,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     try {
       setIsLoading(true);
       setSyncStatus(null);
+      setSyncProgress(0);
       
       // Prepare sync data
       const syncData: SyncData = {
@@ -297,206 +314,55 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
       // Update timestamp regardless of final status
       setLastSync(new Date().toLocaleString());
 
-      if (isDevelopment) {
-        // Development environment - Use synchronous sync process
-        // Send the sync data to background script
-        const response = await chrome.runtime.sendMessage({
-          type: 'SYNC_TO_NOTION',
-          data: syncData
-        });
-        
-        // Store initial sync response status
-        let initialSyncStatus: 'success' | 'error' | 'partial' | null = null;
-        
-        // Check if the response indicates an error
-        if (response && response.error) {
-          // For error responses, update status immediately
-          initialSyncStatus = 'error';
-          setSyncStatus('error');
-          console.error('Sync error:', response.error);
-          setIsLoading(false);
-        } else {
-          // For successful or partial syncs, we'll verify with compare API
-          if (response && response.partial) {
-            initialSyncStatus = 'partial';
-            console.warn('Partial sync detected, verifying with compare API...');
-          } else {
-            initialSyncStatus = 'success';
-            console.log('Sync appears successful, verifying with compare API...');
-          }
-          
-          // Run compareWithNotion to check for any remaining unsynced assignments
-          try {
-            const unsyncedCount = await compareWithNotion();
-            console.log(`Compare complete. Found ${unsyncedCount} unsynced assignments.`);
-            
-            // Determine final status based on unsynced items
-            if (unsyncedCount > 0) {
-              // If we still have unsynced items, mark as partial
-              setSyncStatus('partial');
-              console.log('Setting status to partial due to remaining unsynced assignments');
-            } else {
-              // If no unsynced items, use the initial status (success or partial)
-              setSyncStatus(initialSyncStatus);
-              console.log(`Setting status to ${initialSyncStatus} as no unsynced assignments remain`);
-            }
-          } catch (compareError) {
-            console.error('Error during compare after sync:', compareError);
-            // If compare fails but sync appeared successful, still show the initial status
-            setSyncStatus(initialSyncStatus);
-          } finally {
-            setIsLoading(false);
-          }
-        }
-      } else if (isProduction) {
-        // Production environment - Use asynchronous sync process with status checking
-        // First, run a compare to determine how many assignments need to be synced
-        let assignmentCount = 0;
-        try {
-          assignmentCount = await compareWithNotion();
-          console.log(`Found ${assignmentCount} assignments that need to be synced`);
-        } catch (error) {
-          console.error('Error determining assignment count:', error);
-          // Default to 15 attempts if we can't determine the count
-          assignmentCount = 0;
-        }
-
-        // Then initiate the sync
-        const response = await chrome.runtime.sendMessage({
-          type: 'SYNC_TO_NOTION',
-          data: syncData
-        });
-
-        if (response && response.error) {
-          // Handle error response
-          setSyncStatus('error');
-          console.error('Sync error:', response.error);
-          setIsLoading(false);
-          return;
-        }
-
-        // Start checking sync status with exponential backoff
-        await checkSyncStatus(assignmentCount);
+      // Use sync v2 for both development and production (synchronous chunked approach)
+      console.log('Starting sync v2 with data:', syncData);
+      
+      const response = await chrome.runtime.sendMessage({
+        type: 'SYNC_TO_NOTION_V2',
+        data: syncData
+      });
+      
+      console.log('Sync v2 response:', response);
+      
+      if (response && response.error) {
+        setSyncStatus('error');
+        console.error('Sync error:', response.error);
+        setIsLoading(false);
+        return;
       }
+      
+      if (response && response.success) {
+        const syncResult = response.data?.syncResult;
+        
+        // Determine status based on results
+        if (syncResult?.errors && syncResult.errors.length > 0 && syncResult.totalCreated === 0) {
+          setSyncStatus('error');
+          console.error('Sync failed with errors:', syncResult.errors);
+        } else if (syncResult?.errors && syncResult.errors.length > 0) {
+          setSyncStatus('partial');
+          console.warn('Sync completed with some errors:', syncResult.errors);
+        } else {
+          setSyncStatus('success');
+          console.log('Sync completed successfully');
+        }
+        
+        // Refresh the unsynced items list
+        try {
+          await compareWithNotion();
+        } catch (compareError) {
+          console.error('Error refreshing unsynced items:', compareError);
+        }
+      } else {
+        setSyncStatus('error');
+        console.error('Sync failed:', response);
+      }
+      
+      setIsLoading(false);
+      setSyncProgress(100);
     } catch (error) {
       console.error('Sync failed:', error);
       setSyncStatus('error');
       setIsLoading(false);
-    }
-  }
-
-  // Function to check sync status with exponential backoff
-  const checkSyncStatus = async (assignmentCount: number = 0) => {
-    if (!firebaseToken) {
-      console.error('Cannot check sync status: missing authentication token');
-      setSyncStatus('error');
-      setIsLoading(false);
-      return;
-    }
-    
-    // Calculate appropriate max attempts based on assignment count
-    // Adjusted formula to match observed performance: 50 assignments = ~15 attempts
-    const baseAttempts = 10;
-    const assignmentFactor = Math.ceil(assignmentCount / 10); // Changed from 5 to 10
-    const calculatedAttempts = baseAttempts + assignmentFactor;
-    const maxAttempts = Math.min(Math.max(calculatedAttempts, 12), 25); // Adjusted min/max
-    
-    console.log(`Setting max polling attempts to ${maxAttempts} for ${assignmentCount} assignments`);
-    
-    let delay = 1000; // Start with 1 second delay
-    const maxDelay = 10000; // Cap at 10 seconds
-    let attempts = 0;
-
-    while (attempts < maxAttempts) {
-      try {
-        attempts++;
-        
-        // Fetch the sync status from the Netlify function
-        const statusUrl = await configService.getApiEndpoint('/sync-status');
-        
-        console.log(`Checking sync status (attempt ${attempts}/${maxAttempts})...`);
-        const response = await fetch(statusUrl, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${firebaseToken}`
-          }
-        });
-        const data = await response.json();
-        
-        console.log('Sync status response:', data);
-        
-        if (data.success && data.syncStatus) {
-          if (data.syncStatus.status === 'complete') {
-            console.log('Sync completed successfully');
-            
-            // Run compareWithNotion to refresh unsynced items
-            try {
-              const unsyncedCount = await compareWithNotion();
-              console.log(`Compare complete. Found ${unsyncedCount} unsynced assignments.`);
-              
-              // Determine final status based on unsynced items
-              if (unsyncedCount > 0) {
-                setSyncStatus('partial');
-                console.log('Setting status to partial due to remaining unsynced assignments');
-              } else {
-                setSyncStatus('success');
-                console.log('Setting status to success as no unsynced assignments remain');
-              }
-            } catch (compareError) {
-              console.error('Error during compare after sync:', compareError);
-              setSyncStatus('success'); // Assume success if compare fails
-            }
-            
-            // Exit the polling loop
-            setIsLoading(false);
-            return;
-          } else if (data.syncStatus.status === 'error') {
-            // Handle error status
-            console.error('Sync process encountered an error');
-            setSyncStatus('error');
-            setIsLoading(false);
-            return;
-          }
-          // If status is still 'pending', continue polling
-        } else {
-          // Invalid response, stop polling
-          console.error('Invalid status response:', data);
-          setSyncStatus('error');
-          setIsLoading(false);
-          return;
-        }
-        
-        // Calculate next delay with exponential backoff
-        delay = Math.min(delay * 2, maxDelay);
-        
-        // Add a small random factor to prevent thundering herd problem
-        const jitter = Math.random() * 500;
-        const totalDelay = delay + jitter;
-        
-        // For larger assignment counts, reduce the delay slightly to speed up the process
-        const adjustedDelay = assignmentCount > 20 ? totalDelay * 0.8 : totalDelay;
-        
-        console.log(`Waiting ${Math.round(adjustedDelay)}ms before next status check`);
-        await new Promise(resolve => setTimeout(resolve, adjustedDelay));
-        
-      } catch (error) {
-        console.error('Error checking sync status:', error);
-        setSyncStatus('error');
-        setIsLoading(false);
-        return;
-      }
-    }
-    
-    // If we exceed max attempts, assume partial success
-    console.warn(`Exceeded maximum status check attempts (${maxAttempts}) for ${assignmentCount} assignments`);
-    setSyncStatus('partial');
-    setIsLoading(false);
-    
-    // Still try to refresh unsynced items
-    try {
-      await compareWithNotion();
-    } catch (error) {
-      console.error('Error comparing with Notion after max attempts:', error);
     }
   }
 
@@ -585,6 +451,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
           disabled={buttonDisabled}
           lastSync={lastSync}
           syncStatus={syncStatus}
+          progress={syncProgress}
         />
       </div>
     </div>
