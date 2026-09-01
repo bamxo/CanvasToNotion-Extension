@@ -31,7 +31,7 @@
   height: auto;
   color: white;
   font-family: 'Poppins', sans-serif;
-  padding: 0 2em 2em;
+  padding: 0 2em 1.25em;
   max-width: 100%;
   box-sizing: border-box;
   margin: 0 auto;
@@ -136,7 +136,7 @@
   box-sizing: border-box;
   height: auto;
   position: relative;
-  margin-top: 40px;
+  margin-top: 30px;
   z-index: 1;
   animation: fadeIn 0.5s ease-out forwards;
 }
@@ -614,14 +614,14 @@
   align-items: center;
   justify-content: center;
   padding: 20px 10px;
-  gap: 20px;
+  gap: 18px;
   opacity: 0;
   transform: translateY(10px);
 }
 
 .emptyStateIcon {
   color: rgba(255, 106, 44, 0.6);
-  font-size: 32px;
+  font-size: 30px;
 }
 
 .emptyStateText {
@@ -700,27 +700,37 @@
 
 /* Class Selector Styles */
 .classSelectorContainer {
-  margin: 12px 0;
+  margin: 4px 0;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* When the panel is open it must fill the popup width, not shrink-wrap
+   around its (potentially very wide) course rows. */
+.classSelectorExpanded {
+  align-self: stretch;
+  width: 100%;
 }
 
 .classSelectorHeader {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 14px 18px;
   background: transparent;
   border: none;
   color: inherit;
   font: inherit;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.classSelectorIcon { color: #ff6b35; flex-shrink: 0; }
+.classSelectorIcon { color: #ff6b35; flex-shrink: 0; font-size: 15px; }
 
 .classSelectorSummary { font-weight: 600; color: #ff6b35; }
 
@@ -771,15 +781,24 @@
   padding: 6px 0;
   cursor: pointer;
   font-size: 13px;
+  min-width: 0;
 }
 
 .classSelectorCheckbox { accent-color: #ff6b35; flex-shrink: 0; }
 
-.classSelectorCourseName { flex: 1; }
+.classSelectorCourseName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .classSelectorCourseCode {
   color: rgba(255, 255, 255, 0.45);
   font-size: 11px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* Loading Animation Styles (matching PageSelector) */

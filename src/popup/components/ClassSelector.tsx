@@ -54,7 +54,9 @@ const ClassSelector: React.FC<ClassSelectorProps> = ({
   const groups = groupCoursesByTerm(candidates);
 
   return (
-    <div className={styles.classSelectorContainer}>
+    <div
+      className={`${styles.classSelectorContainer} ${expanded ? styles.classSelectorExpanded : ''}`}
+    >
       <button
         type="button"
         className={styles.classSelectorHeader}

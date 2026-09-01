@@ -184,7 +184,8 @@ function App() {
   const containerStyle = {
     height: isAuthenticated ? 'auto' : !isCanvasPage ? '420px' : '388px',
     minHeight: isAuthenticated ? '388px' : undefined,
-    overflow: isAuthenticated ? 'auto' : 'hidden',
+    // Let the popup size itself to its content (Chrome caps popups at 600px).
+    overflow: isAuthenticated ? 'visible' : 'hidden',
     transition: 'height 0.3s ease'
   };
 
