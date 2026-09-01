@@ -20,11 +20,12 @@ export function initializeServiceWorker() {
 // Get Firebase token from storage
 export async function getFirebaseToken(): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    chrome.storage.local.get(['firebaseToken'], (result) => {
-      if (!result.firebaseToken) {
+    chrome.storage.local.get(['firebaseToken', 'authToken'], (result) => {
+      const token = result.firebaseToken || result.authToken;
+      if (!token) {
         reject(new Error('Firebase token not found in storage'));
       } else {
-        resolve(result.firebaseToken);
+        resolve(token);
       }
     });
   });
@@ -68,7 +69,10 @@ export async function handleSyncToNotion(message: any) {
   try {
     console.log('Handling sync to Notion', message);
     
-    const courses = await canvasApi.getRecentCourses();
+    const courses = Array.isArray(message.data?.courses) ? message.data.courses : [];
+    if (courses.length === 0) {
+      return { success: false, error: 'No classes selected' };
+    }
     const assignments = await canvasApi.getAllAssignments(courses);
     
     const syncResult = await syncWithNotion(courses, assignments, message);

@@ -186,61 +186,102 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function isFirebaseCustomToken(payload: Record<string, unknown> | null): boolean {
+  if (!payload) {
+    return false;
+  }
+  const aud = payload.aud;
+  return typeof payload.uid === 'string' &&
+    typeof aud === 'string' &&
+    aud.includes('identitytoolkit');
+}
+
+async function resolveFirebaseIdToken(token: string): Promise<string> {
+  const payload = decodeJwtPayload(token);
+  if (!isFirebaseCustomToken(payload)) {
+    return token;
+  }
+
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing Firebase API key for custom token exchange');
+  }
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, returnSecureToken: true })
+    }
+  );
+
+  const data = await response.json();
+  if (!response.ok || !data.idToken) {
+    throw new Error(data?.error?.message || 'Failed to exchange custom token for ID token');
+  }
+
+  return data.idToken;
+}
+
 // Listen for external messages from the web app
 chrome.runtime.onMessageExternal.addListener(
-  async (message, sender, sendResponse) => {
+  (message, sender, sendResponse) => {
+    if (message.type !== 'AUTH_TOKEN') {
+      return false;
+    }
+
     console.log('Received external message:', {
       type: message.type,
       sender: sender.origin,
       hasToken: !!message.token
     });
-    
-    if (message.type === 'AUTH_TOKEN') {
+
+    (async () => {
       try {
         const { token } = message;
-        console.log('Processing AUTH_TOKEN message...');
-        
-        // Store the token securely
-        console.log('Storing token in chrome.storage.local...');
-        await chrome.storage.local.set({ 
-          authToken: token,
-          tokenTimestamp: Date.now()
-        });
-        console.log('Token stored successfully');
-
-        // Get user info from the token if possible
-        try {
-          const tokenParts = token.split('.');
-          if (tokenParts.length === 3) {
-            const payload = JSON.parse(atob(tokenParts[1]));
-            const userInfo = {
-              displayName: payload.name || 'Canvas User',
-              email: payload.email || configService.getDefaultEmail(),
-              uid: payload.sub || payload.user_id || 'external-token-auth'
-            };
-            
-            // Store user info
-            console.log('Storing user info in chrome.storage.local...');
-            await chrome.storage.local.set({
-              userEmail: userInfo.email,
-              userId: userInfo.uid,
-              canvasToken: userInfo.uid,
-              userInfo: userInfo
-            });
-            console.log('User info stored successfully');
-          }
-        } catch (error) {
-          console.warn('Could not extract user info from token, using defaults:', error);
-          await chrome.storage.local.set({
-            userEmail: configService.getDefaultEmail(),
-            userId: 'external-token-auth',
-            canvasToken: 'external-token-auth'
-          });
+        if (!token) {
+          sendResponse({ success: false, error: 'No token provided' });
+          return;
         }
 
-        // Notify the popup about successful authentication
-        console.log('Sending LOGIN_SUCCESS message to popup...');
-        chrome.runtime.sendMessage({ type: 'LOGIN_SUCCESS' }, (response) => {
+        console.log('Processing AUTH_TOKEN message...');
+        const idToken = await resolveFirebaseIdToken(token);
+
+        const payload = decodeJwtPayload(idToken);
+        const userInfo = {
+          displayName: (payload?.name as string) || 'Canvas User',
+          email: (payload?.email as string) || configService.getDefaultEmail(),
+          photoURL: (payload?.picture as string) || undefined,
+          uid: (payload?.user_id as string) || (payload?.sub as string) || (payload?.uid as string) || 'external-token-auth'
+        };
+
+        console.log('Storing ID token in chrome.storage.local...');
+        await chrome.storage.local.set({
+          authToken: idToken,
+          firebaseToken: idToken,
+          tokenTimestamp: Date.now(),
+          userEmail: userInfo.email,
+          userId: userInfo.uid,
+          canvasToken: userInfo.uid,
+          userInfo
+        });
+        console.log('Token and user info stored successfully');
+
+        chrome.runtime.sendMessage({ type: 'LOGIN_SUCCESS' }, () => {
           if (chrome.runtime.lastError) {
             console.error('Error sending LOGIN_SUCCESS message:', chrome.runtime.lastError);
           } else {
@@ -253,8 +294,9 @@ chrome.runtime.onMessageExternal.addListener(
         console.error('Error processing AUTH_TOKEN:', error);
         sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
       }
-      return true; // Keep message channel open for async response
-    }
+    })();
+
+    return true; // Keep message channel open for async response
   }
 );
 

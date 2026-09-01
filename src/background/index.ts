@@ -27,12 +27,13 @@ setInterval(() => {
 // Helper function to get Firebase token
 async function getFirebaseToken(): Promise<string> {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get(['firebaseToken'], (result) => {
-      if (!result.firebaseToken) {
+    chrome.storage.local.get(['firebaseToken', 'authToken'], (result) => {
+      const token = result.firebaseToken || result.authToken;
+      if (!token) {
         console.error('Firebase token not found in storage');
         reject(new Error('Firebase token not found in storage'));
       } else {
-        resolve(result.firebaseToken);
+        resolve(token);
       }
     });
   });
@@ -307,13 +308,14 @@ async function compareWithNotion(courses: any[], assignments: any[], pageId: str
     
     // Get the Firebase token from storage with better error handling
     const firebaseToken = await new Promise<string>((resolve, reject) => {
-      chrome.storage.local.get(['firebaseToken'], (result) => {
-        if (!result.firebaseToken) {
+      chrome.storage.local.get(['firebaseToken', 'authToken'], (result) => {
+        const token = result.firebaseToken || result.authToken;
+        if (!token) {
           console.error('Firebase token not found in storage');
           reject(new Error('Firebase token not found in storage'));
         } else {
           console.log('Firebase token retrieved successfully');
-          resolve(result.firebaseToken);
+          resolve(token);
         }
       });
     });
@@ -391,13 +393,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           });
         };
         
-        // Send initial progress - fetching data
-        sendProgress(2, 'Fetching Canvas courses...');
-        
-        // Fetch all necessary data from Canvas
-        const courses = await canvasApi.getRecentCourses();
-        console.log('Fetched courses:', courses.length);
-        
+        const courses = Array.isArray(message.data?.courses) ? message.data.courses : [];
+        if (courses.length === 0) {
+          sendResponse({ success: false, error: 'No classes selected' });
+          return;
+        }
         sendProgress(5, 'Fetching Canvas assignments...');
         
         const assignments = await canvasApi.getAllAssignments(courses);
@@ -443,9 +443,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         // Legacy sync handler (for production polling approach)
         console.log('Received SYNC_TO_NOTION message:', message);
         
-        const courses = await canvasApi.getRecentCourses();
-        console.log('Fetched courses:', courses);
-        
+        const courses = Array.isArray(message.data?.courses) ? message.data.courses : [];
+        if (courses.length === 0) {
+          sendResponse({ success: false, error: 'No classes selected' });
+          return;
+        }
+
         const assignments = await canvasApi.getAllAssignments(courses);
         console.log('Fetched assignments:', assignments);
         
@@ -476,8 +479,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       } else if (message.type === 'COMPARE') {
         console.log('Received COMPARE message:', message);
         
-        const courses = await canvasApi.getRecentCourses();
-        console.log('Fetched courses:', courses.length);
+        const courses = Array.isArray(message.data?.courses) ? message.data.courses : [];
+        if (courses.length === 0) {
+          sendResponse({ success: false, error: 'No classes selected' });
+          return;
+        }
 
         const assignments = await canvasApi.getAllAssignments(courses);
         console.log('Fetched assignments:', assignments.length);

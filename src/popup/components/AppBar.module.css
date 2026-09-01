@@ -9,7 +9,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  width: 368px;
+  width: auto;
   margin: -2em;
   margin-bottom: 0;
   box-sizing: border-box;

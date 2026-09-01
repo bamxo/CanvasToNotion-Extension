@@ -74,18 +74,19 @@ const PageSelector: React.FC<PageSelectorProps> = ({ onPageSelect }) => {
         });
       } else {
         // If we don't have a user from auth state, try to get from storage
-        chrome.storage.local.get(['userEmail', 'firebaseToken'], (result) => {
+        chrome.storage.local.get(['userEmail', 'firebaseToken', 'authToken'], (result) => {
           if (result.userEmail) {
             console.log('Retrieved email from storage:', result.userEmail);
             setUserEmail(result.userEmail);
           }
           
-          if (result.firebaseToken) {
-            console.log('Retrieved firebase token from storage');
-            setFirebaseToken(result.firebaseToken);
+          const storedToken = result.firebaseToken || result.authToken;
+          if (storedToken) {
+            console.log('Retrieved auth token from storage');
+            setFirebaseToken(storedToken);
           }
           
-          if (!result.userEmail || !result.firebaseToken) {
+          if (!result.userEmail || !storedToken) {
             console.log('Missing authentication data in storage');
             setError('User not authenticated. Please sign in first.');
             setIsLoading(false);

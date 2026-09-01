@@ -53,182 +53,107 @@ describe('Canvas API Service', () => {
     })
   })
 
-  describe('getRecentCourses', () => {
-    it('should fetch and filter recent courses successfully', async () => {
-      const mockCourses = [
-        {
-          id: 1,
-          name: 'Test Course 1',
-          course_code: 'TEST101',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 1 month ago
-          enrollments: [{ enrollment_state: 'active', type: 'student' }]
-        },
-        {
-          id: 2,
-          name: 'Old Course',
-          course_code: 'OLD101',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString(), // 6 months ago
-          enrollments: [{ enrollment_state: 'active', type: 'student' }]
-        },
-        {
-          id: 3,
-          name: 'Unavailable Course',
-          course_code: 'UNAVAIL101',
-          workflow_state: 'completed',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          enrollments: [{ enrollment_state: 'active', type: 'student' }]
-        },
-        {
-          id: 4,
-          name: 'Teacher Course',
-          course_code: 'TEACH101',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          enrollments: [{ enrollment_state: 'active', type: 'teacher' }]
-        }
-      ]
-
-      const mockResponse = {
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockCourses),
-        headers: {
-          get: vi.fn().mockReturnValue(null)
-        }
-      }
-
-      global.fetch = vi.fn().mockResolvedValue(mockResponse)
-
-      const result = await api.getRecentCourses()
-
-      expect(global.fetch).toHaveBeenCalledWith('https://canvas.ucsc.edu/api/v1/courses?per_page=100')
-      expect(result).toHaveLength(1)
-      expect(result[0]).toEqual({
-        id: 1,
-        name: 'Test Course 1',
-        code: 'TEST101',
-        workflow_state: 'available'
-      })
+  describe('listCandidateCourses', () => {
+    beforeEach(() => {
+      // getCanvasBaseUrl() reads chrome.storage.local.get(['canvasBaseUrl'], cb);
+      // the shared setup mock never invokes cb, so prime it here.
+      ;(global.chrome.storage.local.get as any).mockImplementation(
+        (_keys: any, cb: (r: any) => void) => cb({ canvasBaseUrl: 'https://canvas.ucsc.edu/api/v1' })
+      )
+      // Mock validateCanvasApi to return true
+      vi.spyOn(api as any, 'validateCanvasApi').mockResolvedValue(true)
     })
 
-    it('should handle pagination correctly', async () => {
-      const mockCoursesPage1 = [
-        {
-          id: 1,
-          name: 'Course 1',
-          course_code: 'C1',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          enrollments: [{ enrollment_state: 'active', type: 'student' }]
-        }
-      ]
+    const okPage = (body: any[], next: string | null = null) => ({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue(body),
+      headers: { get: vi.fn().mockReturnValue(next ? `<${next}>; rel="next"` : null) },
+    })
 
-      const mockCoursesPage2 = [
-        {
-          id: 2,
-          name: 'Course 2',
-          course_code: 'C2',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          enrollments: [{ enrollment_state: 'active', type: 'student' }]
-        }
-      ]
-
-      const mockResponsePage1 = {
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockCoursesPage1),
-        headers: {
-          get: vi.fn().mockReturnValue('<https://canvas.ucsc.edu/api/v1/courses?page=2>; rel="next"')
-        }
-      }
-
-      const mockResponsePage2 = {
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockCoursesPage2),
-        headers: {
-          get: vi.fn().mockReturnValue(null)
-        }
-      }
-
+    it('fetches active and completed courses and maps CandidateCourse fields', async () => {
+      const active = [{
+        id: 1, name: 'Algorithms', course_code: 'CSE101', workflow_state: 'available',
+        term: { id: 10, name: 'Fall 2026', start_at: '2026-09-20T00:00:00Z' },
+      }]
+      const completed = [{
+        id: 2, name: 'Old Bio', course_code: 'BIO1', workflow_state: 'completed',
+        term: { id: 9, name: 'Spring 2026', start_at: '2026-03-20T00:00:00Z' },
+      }]
       global.fetch = vi.fn()
-        .mockResolvedValueOnce(mockResponsePage1)
-        .mockResolvedValueOnce(mockResponsePage2)
+        .mockResolvedValueOnce(okPage(active))
+        .mockResolvedValueOnce(okPage(completed))
 
-      const result = await api.getRecentCourses()
+      const result = await api.listCandidateCourses()
 
-      expect(global.fetch).toHaveBeenCalledTimes(2)
-      expect(result).toHaveLength(2)
-      expect(result[0].name).toBe('Course 1')
-      expect(result[1].name).toBe('Course 2')
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://canvas.ucsc.edu/api/v1/courses?enrollment_type=student&enrollment_state=active&include[]=term&per_page=100'
+      )
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://canvas.ucsc.edu/api/v1/courses?enrollment_type=student&enrollment_state=completed&include[]=term&per_page=100'
+      )
+      expect(result).toEqual([
+        { id: 1, name: 'Algorithms', code: 'CSE101',
+          term: { id: 10, name: 'Fall 2026', startAt: '2026-09-20T00:00:00Z' },
+          enrollmentState: 'active' },
+        { id: 2, name: 'Old Bio', code: 'BIO1',
+          term: { id: 9, name: 'Spring 2026', startAt: '2026-03-20T00:00:00Z' },
+          enrollmentState: 'completed' },
+      ])
     })
 
-    it('should throw error when fetch fails', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 401
-      }
+    it('paginates via the Link header', async () => {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(okPage(
+          [{ id: 1, name: 'A', course_code: 'A1', workflow_state: 'available', term: null }],
+          'https://canvas.ucsc.edu/api/v1/courses?page=2'))
+        .mockResolvedValueOnce(okPage(
+          [{ id: 2, name: 'B', course_code: 'B1', workflow_state: 'available', term: null }]))
+        .mockResolvedValueOnce(okPage([])) // completed query, page 1
 
-      global.fetch = vi.fn().mockResolvedValue(mockResponse)
+      const result = await api.listCandidateCourses()
 
-      await expect(api.getRecentCourses()).rejects.toThrow('HTTP error! Status: 401')
+      expect(result.map(c => c.id)).toEqual([1, 2])
+      expect(result[0].term).toEqual({ id: null, name: null, startAt: null })
     })
 
-    it('should handle courses without course_code', async () => {
-      const mockCourses = [
-        {
-          id: 1,
-          name: 'Test Course',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          enrollments: [{ enrollment_state: 'active', type: 'student' }]
-        }
-      ]
+    it('dedupes by id, preferring the active enrollment', async () => {
+      const dup = { id: 5, name: 'Dup', course_code: 'D1', workflow_state: 'available', term: null }
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(okPage([dup]))
+        .mockResolvedValueOnce(okPage([{ ...dup, workflow_state: 'completed' }]))
 
-      const mockResponse = {
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockCourses),
-        headers: {
-          get: vi.fn().mockReturnValue(null)
-        }
-      }
+      const result = await api.listCandidateCourses()
 
-      global.fetch = vi.fn().mockResolvedValue(mockResponse)
+      expect(result).toHaveLength(1)
+      expect(result[0].enrollmentState).toBe('active')
+    })
 
-      const result = await api.getRecentCourses()
+    it('drops courses whose workflow_state is neither available nor completed', async () => {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(okPage([
+          { id: 1, name: 'Live', course_code: 'L1', workflow_state: 'available', term: null },
+          { id: 2, name: 'Deleted', course_code: 'X1', workflow_state: 'deleted', term: null },
+        ]))
+        .mockResolvedValueOnce(okPage([]))
 
+      const result = await api.listCandidateCourses()
+
+      expect(result.map(c => c.id)).toEqual([1])
+    })
+
+    it('throws an auth error on 401', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, statusText: 'Unauthorized' })
+      await expect(api.listCandidateCourses())
+        .rejects.toThrow('Canvas authentication required. Please log into Canvas first.')
+    })
+
+    it('defaults missing course_code to an empty string', async () => {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(okPage([{ id: 1, name: 'NoCode', workflow_state: 'available', term: null }]))
+        .mockResolvedValueOnce(okPage([]))
+      const result = await api.listCandidateCourses()
       expect(result[0].code).toBe('')
-    })
-
-    it('should handle courses without enrollments', async () => {
-      const mockCourses = [
-        {
-          id: 1,
-          name: 'Test Course',
-          course_code: 'TEST101',
-          workflow_state: 'available',
-          created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-        }
-      ]
-
-      const mockResponse = {
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockCourses),
-        headers: {
-          get: vi.fn().mockReturnValue(null)
-        }
-      }
-
-      global.fetch = vi.fn().mockResolvedValue(mockResponse)
-
-      const result = await api.getRecentCourses()
-
-      expect(result).toHaveLength(0)
     })
   })
 
@@ -237,6 +162,12 @@ describe('Canvas API Service', () => {
       { id: 1, name: 'Course 1', code: 'C1', workflow_state: 'available' },
       { id: 2, name: 'Course 2', code: 'C2', workflow_state: 'available' }
     ]
+
+    beforeEach(() => {
+      ;(global.chrome.storage.local.get as any).mockImplementation(
+        (_keys: any, cb: (r: any) => void) => cb({ canvasBaseUrl: 'https://canvas.ucsc.edu/api/v1' })
+      )
+    })
 
     it('should fetch assignments for all courses successfully', async () => {
       const mockAssignments1 = [

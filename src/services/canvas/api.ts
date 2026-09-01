@@ -1,8 +1,15 @@
-interface Course {
+export interface CandidateCourse {
   id: number;
   name: string;
   code: string;
-  workflow_state: string;
+  term: { id: number | null; name: string | null; startAt: string | null };
+  enrollmentState: 'active' | 'completed';
+}
+
+export interface SelectedCourse {
+  id: number;
+  name: string;
+  code: string;
 }
 
 interface Assignment {
@@ -115,104 +122,20 @@ export class CanvasApi {
     return null;
   }
 
-  /**
-   * Gets the selected term type from storage
-   */
-  private async getSelectedTerm(): Promise<string> {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(['selectedTerm'], (result) => {
-        resolve(result.selectedTerm || 'quarter'); // Default to quarter
-      });
-    });
-  }
+  async listCandidateCourses(): Promise<CandidateCourse[]> {
+    const baseUrl = await this.getCanvasBaseUrl();
 
-  /**
-   * Gets the current term name based on the selected term type and current date
-   */
-  private getCurrentTermName(termType: string): string {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11
-
-    if (termType === 'quarter') {
-      if (currentMonth >= 9 && currentMonth <= 12) {
-        return `fall ${currentYear}`;
-      } else if (currentMonth >= 1 && currentMonth <= 3) {
-        return `winter ${currentYear}`;
-      } else if (currentMonth >= 3 && currentMonth <= 6) {
-        return `spring ${currentYear}`;
-      } else if (currentMonth >= 6 && currentMonth <= 8) {
-        return `summer ${currentYear}`;
-      }
-    } else if (termType === 'semester') {
-      if (currentMonth >= 8 && currentMonth <= 12) {
-        return `fall ${currentYear}`;
-      } else if (currentMonth >= 1 && currentMonth <= 5) {
-        return `spring ${currentYear}`;
-      } else if (currentMonth >= 5 && currentMonth <= 8) {
-        return `summer ${currentYear}`;
-      }
+    const isValid = await this.validateCanvasApi(baseUrl);
+    if (!isValid) {
+      throw new Error('Canvas API is not accessible. Please make sure you are logged into Canvas.');
     }
 
-    return `fall ${currentYear}`; // Default fallback
-  }
-
-  /**
-   * Checks if a course matches the current term based on term name
-   */
-  private isCurrentTermCourse(course: any, termType: string): boolean {
-    if (!course.term?.name) return false;
-
-    const termName = course.term.name.toLowerCase();
-    const currentYear = new Date().getFullYear().toString();
-    const currentMonth = new Date().getMonth() + 1;
-
-    let expectedTerms: string[] = [];
-
-    if (termType === 'quarter') {
-      if (currentMonth >= 9 && currentMonth <= 12) {
-        expectedTerms = ['fall', currentYear];
-      } else if (currentMonth >= 1 && currentMonth <= 3) {
-        expectedTerms = ['winter', currentYear];
-      } else if (currentMonth >= 3 && currentMonth <= 6) {
-        expectedTerms = ['spring', currentYear];
-      } else if (currentMonth >= 6 && currentMonth <= 8) {
-        expectedTerms = ['summer', currentYear];
-      }
-    } else if (termType === 'semester') {
-      if (currentMonth >= 8 && currentMonth <= 12) {
-        expectedTerms = ['fall', currentYear];
-      } else if (currentMonth >= 1 && currentMonth <= 5) {
-        expectedTerms = ['spring', currentYear];
-      } else if (currentMonth >= 5 && currentMonth <= 8) {
-        expectedTerms = ['summer', currentYear];
-      }
-    }
-
-    // Check if both the term name and year are present in the term name string
-    return expectedTerms.every(term => termName.includes(term));
-  }
-
-  async getRecentCourses(): Promise<Course[]> {
-    try {
-      const baseUrl = await this.getCanvasBaseUrl();
-      console.log('Using Canvas API base URL:', baseUrl);
-
-      // Validate the API is accessible
-      const isValid = await this.validateCanvasApi(baseUrl);
-      if (!isValid) {
-        throw new Error('Canvas API is not accessible. Please make sure you are logged into Canvas.');
-      }
-
-      // Get the selected term type from storage
-      const selectedTerm = await this.getSelectedTerm();
-      console.log('Selected term type:', selectedTerm);
-
-      let allCourses: any[] = [];
-      let url = `${baseUrl}/courses?per_page=100&include[]=term`;
-      const now = new Date();
-      const RECENT_CUTOFF_MONTHS = selectedTerm === 'semester' ? 6 : 4;
-
+    const fetchAll = async (
+      enrollmentState: 'active' | 'completed'
+    ): Promise<any[]> => {
+      const out: any[] = [];
+      let url: string =
+        `${baseUrl}/courses?enrollment_type=student&enrollment_state=${enrollmentState}&include[]=term&per_page=100`;
       while (url) {
         const response = await fetch(url);
         if (!response.ok) {
@@ -221,83 +144,47 @@ export class CanvasApi {
           }
           throw new Error(`Canvas API error: ${response.status} ${response.statusText}`);
         }
-
-        const pageCourses = await response.json();
-        console.log('Fetched courses page:', pageCourses.length, 'courses');
-        allCourses = allCourses.concat(pageCourses);
-
+        const page = await response.json();
+        out.push(...page);
         const linkHeader = response.headers.get('Link');
         url = linkHeader ? this.parseNextLink(linkHeader) || '' : '';
       }
+      return out;
+    };
 
-      // First, try filtering by creation date
-      let filteredCourses = allCourses.filter((course: any) => {
-        const createdDate = new Date(course.created_at);
-        const monthsSinceCreated =
-          (now.getFullYear() - createdDate.getFullYear()) * 12 +
-          now.getMonth() - createdDate.getMonth();
+    const [activeRaw, completedRaw] = await Promise.all([
+      fetchAll('active'),
+      fetchAll('completed'),
+    ]);
 
-        const isRecent = monthsSinceCreated <= RECENT_CUTOFF_MONTHS;
-        const isAvailable = course.workflow_state === 'available';
-        const isStudent = course.enrollments?.some(
-          (enr: any) => enr.enrollment_state === 'active' && enr.type === 'student'
-        );
+    const ALLOWED_STATES = new Set(['available', 'completed']);
+    const byId = new Map<number, CandidateCourse>();
 
-        // Debug logging for each course
-        // console.log(`Course: ${course.name}`);
-        // console.log(`  Created: ${course.created_at} (${monthsSinceCreated} months ago)`);
-        // console.log(`  Start: ${course.start_at}`);
-        // console.log(`  End: ${course.end_at}`);
-        // console.log(`  Term name:`, course.term?.name);
-        // console.log(`  Term ID:`, course.term?.id);
-        // console.log(`  Workflow State: ${course.workflow_state}`);
-        // console.log(`  Enrollments:`, course.enrollments);
-        // console.log(`  isRecent: ${isRecent}, isAvailable: ${isAvailable}, isStudent: ${isStudent}`);
-        // console.log(`  Passes filter: ${isRecent && isAvailable && isStudent}`);
-        // console.log('---');
-
-        return isRecent && isAvailable && isStudent;
-      });
-
-      console.log(`Filtered to ${filteredCourses.length} recent courses from ${allCourses.length} total using creation date`);
-
-      // If no courses found using creation date, try filtering by current term
-      if (filteredCourses.length === 0) {
-        console.log('No courses found using creation date filter, trying current term filter...');
-        
-        filteredCourses = allCourses.filter((course: any) => {
-          const isAvailable = course.workflow_state === 'available';
-          const isStudent = course.enrollments?.some(
-            (enr: any) => enr.enrollment_state === 'active' && enr.type === 'student'
-          );
-          const isCurrentTerm = this.isCurrentTermCourse(course, selectedTerm);
-
-          console.log(`Course: ${course.name}`);
-          console.log(`  Term name:`, course.term?.name);
-          console.log(`  isAvailable: ${isAvailable}, isStudent: ${isStudent}, isCurrentTerm: ${isCurrentTerm}`);
-          console.log(`  Passes term filter: ${isAvailable && isStudent && isCurrentTerm}`);
-          console.log('---');
-
-          return isAvailable && isStudent && isCurrentTerm;
+    const ingest = (rows: any[], enrollmentState: 'active' | 'completed') => {
+      for (const course of rows) {
+        if (!ALLOWED_STATES.has(course.workflow_state)) continue;
+        if (byId.has(course.id)) continue; // active ingested first -> active wins
+        byId.set(course.id, {
+          id: course.id,
+          name: course.name,
+          code: course.course_code || '',
+          term: {
+            id: course.term?.id ?? null,
+            name: course.term?.name ?? null,
+            startAt: course.term?.start_at ?? null,
+          },
+          enrollmentState,
         });
-
-        console.log(`Filtered to ${filteredCourses.length} current term courses from ${allCourses.length} total`);
       }
+    };
 
-      // Only return the fields we need
-      return filteredCourses.map(course => ({
-        id: course.id,
-        name: course.name,
-        code: course.course_code || '',
-        workflow_state: course.workflow_state
-      }));
-    } catch (error) {
-      console.error('Error fetching Canvas courses:', error);
-      throw error;
-    }
+    ingest(activeRaw, 'active');
+    ingest(completedRaw, 'completed');
+
+    return Array.from(byId.values());
   }
 
-  async getAllAssignments(courses: Course[]): Promise<Assignment[]> {
+  async getAllAssignments(courses: { id: number; name: string }[]): Promise<Assignment[]> {
     try {
       const baseUrl = await this.getCanvasBaseUrl();
       const allAssignments: Assignment[] = [];

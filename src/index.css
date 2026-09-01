@@ -3,6 +3,16 @@
   line-height: 1.5;
   font-weight: 400;
 
+  /* Lock the extension popup to a fixed width. Chrome sizes the popup
+     window to the <html> element, so the width must live here (not just
+     on body) or the popup balloons to its max width. */
+  width: 400px;
+  overflow-x: hidden;
+  /* Hide the document scrollbar. When it appears/disappears between
+     views Chrome widens the popup by the scrollbar width and never
+     shrinks back, leaving dead space on the right. */
+  scrollbar-width: none;
+
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
   background-color: #242424;
@@ -24,12 +34,18 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  width: 400px;
   height: auto;
   background: linear-gradient(229deg, #1F1F1F 37%, #333333 100%);
+  overflow-x: hidden;
   overflow-y: visible;
+  scrollbar-width: none;
+}
+
+/* WebKit/Chrome equivalent of scrollbar-width: none */
+:root::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
 }
 
 h1 {

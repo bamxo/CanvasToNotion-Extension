@@ -11,10 +11,6 @@ const ENDPOINTS = {
 // Mock the imported modules
 vi.mock('../services/canvas/api', () => ({
   canvasApi: {
-    getRecentCourses: vi.fn().mockResolvedValue([
-      { id: '123', name: 'Test Course 1' },
-      { id: '456', name: 'Test Course 2' }
-    ]),
     getAllAssignments: vi.fn().mockResolvedValue([
       { id: 'a1', name: 'Assignment 1', courseId: '123', due_at: '2023-12-01', points_possible: 100, html_url: 'https://canvas.test/courses/123/assignments/a1' },
       { id: 'a2', name: 'Assignment 2', courseId: '456', due_at: '2023-12-15', points_possible: 50, html_url: 'https://canvas.test/courses/456/assignments/a2' }
@@ -449,10 +445,6 @@ describe('Background Module', () => {
       vi.doMock('../services/canvas/api', () => {
         return {
           canvasApi: {
-            getRecentCourses: vi.fn().mockResolvedValue([
-              { id: '123', name: 'Test Course 1' },
-              { id: '456', name: 'Test Course 2' }
-            ]),
             getAllAssignments: vi.fn().mockResolvedValue([
               { id: 'a1', name: 'Assignment 1', courseId: '123' },
               { id: 'a2', name: 'Assignment 2', courseId: '456' }
@@ -470,10 +462,7 @@ describe('Background Module', () => {
       });
       
       const result = await backgroundModule.handleSyncToNotion(message);
-      
-      // Comment out the failing assertion
-      // expect(backgroundModule.syncWithNotion).toHaveBeenCalled();
-      
+
       // Just verify the structure of the result
       expect(result).toBeDefined();
       expect(typeof result).toBe('object');
@@ -520,8 +509,17 @@ describe('Background Module', () => {
       // Just verify we get some result
       expect(result).toBeDefined();
     });
+
+    it('should return "No classes selected" error when courses is empty', async () => {
+      const result = await backgroundModule.handleSyncToNotion({
+        type: 'SYNC_TO_NOTION',
+        data: { pageId: 'p1', courses: [] }
+      });
+
+      expect(result).toEqual({ success: false, error: 'No classes selected' });
+    });
   });
-  
+
   describe('setupMessageListener', () => {
     it('should set up message listener', () => {
       backgroundModule.setupMessageListener();
