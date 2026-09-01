@@ -92,7 +92,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
         });
       } else {
         // If we don't have a user email from auth state, try to get it from storage
-        chrome.storage.local.get(['userEmail', 'firebaseToken'], (result) => {
+        chrome.storage.local.get(['userEmail', 'firebaseToken', 'authToken'], (result) => {
           if (result.userEmail) {
             setUserEmail(result.userEmail);
             console.log('Retrieved email from storage:', result.userEmail);
@@ -100,11 +100,12 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
             console.log('No email found in storage');
           }
           
-          if (result.firebaseToken) {
-            setFirebaseToken(result.firebaseToken);
-            console.log('Retrieved firebase token from storage');
+          const storedToken = result.firebaseToken || result.authToken;
+          if (storedToken) {
+            setFirebaseToken(storedToken);
+            console.log('Retrieved auth token from storage');
           } else {
-            console.log('No firebase token found in storage');
+            console.log('No auth token found in storage');
           }
         });
       }

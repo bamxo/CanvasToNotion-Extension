@@ -20,11 +20,12 @@ export function initializeServiceWorker() {
 // Get Firebase token from storage
 export async function getFirebaseToken(): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    chrome.storage.local.get(['firebaseToken'], (result) => {
-      if (!result.firebaseToken) {
+    chrome.storage.local.get(['firebaseToken', 'authToken'], (result) => {
+      const token = result.firebaseToken || result.authToken;
+      if (!token) {
         reject(new Error('Firebase token not found in storage'));
       } else {
-        resolve(result.firebaseToken);
+        resolve(token);
       }
     });
   });

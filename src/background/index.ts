@@ -27,12 +27,13 @@ setInterval(() => {
 // Helper function to get Firebase token
 async function getFirebaseToken(): Promise<string> {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get(['firebaseToken'], (result) => {
-      if (!result.firebaseToken) {
+    chrome.storage.local.get(['firebaseToken', 'authToken'], (result) => {
+      const token = result.firebaseToken || result.authToken;
+      if (!token) {
         console.error('Firebase token not found in storage');
         reject(new Error('Firebase token not found in storage'));
       } else {
-        resolve(result.firebaseToken);
+        resolve(token);
       }
     });
   });
@@ -307,13 +308,14 @@ async function compareWithNotion(courses: any[], assignments: any[], pageId: str
     
     // Get the Firebase token from storage with better error handling
     const firebaseToken = await new Promise<string>((resolve, reject) => {
-      chrome.storage.local.get(['firebaseToken'], (result) => {
-        if (!result.firebaseToken) {
+      chrome.storage.local.get(['firebaseToken', 'authToken'], (result) => {
+        const token = result.firebaseToken || result.authToken;
+        if (!token) {
           console.error('Firebase token not found in storage');
           reject(new Error('Firebase token not found in storage'));
         } else {
           console.log('Firebase token retrieved successfully');
-          resolve(result.firebaseToken);
+          resolve(token);
         }
       });
     });
