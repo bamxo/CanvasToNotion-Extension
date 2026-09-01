@@ -14,7 +14,9 @@ import PageSelectionContainer from './PageSelectionContainer'
 import UnsyncedContainer from './UnsyncedContainer'
 import SyncButton from './SyncButton'
 import NotionDisconnected from './NotionDisconnected'
-import TermSelector from './TermSelector'
+import ClassSelector from './ClassSelector'
+import { canvasApi } from '../../services/canvas/api'
+import type { CandidateCourse, SelectedCourse } from '../../services/canvas/api'
 import { UnsyncedItem, transformCanvasAssignments } from '../utils/assignmentTransformer'
 import { ENDPOINTS } from '../../services/api.config'
 
@@ -28,20 +30,11 @@ interface NotionPage {
 
 interface SyncData {
   pageId: string;
-  termSystem?: 'quarter' | 'semester';
+  courses: SelectedCourse[];
 }
 
 interface DashboardProps {
   selectedPage: NotionPage;
-}
-
-interface Assignment {
-  id: string;
-  name: string;
-  courseId: string;
-  due_at: string;
-  points_possible: number;
-  html_url: string;
 }
 
 // Particle component
@@ -66,7 +59,11 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
   const [unsyncedItems, setUnsyncedItems] = useState<UnsyncedItem[]>([])
   const [isNotionConnected, setIsNotionConnected] = useState<boolean | null>(null)
   const [checkingConnection, setCheckingConnection] = useState(true)
-  const [selectedTerm, setSelectedTerm] = useState<'quarter' | 'semester'>('semester')
+  const [candidates, setCandidates] = useState<CandidateCourse[]>([])
+  const [candidatesLoading, setCandidatesLoading] = useState(false)
+  const [candidatesError, setCandidatesError] = useState<string | null>(null)
+  const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([])
+  const [classPanelExpanded, setClassPanelExpanded] = useState(false)
 
   // Generate array of particles with useRef to avoid re-creation on re-renders
   const particles = useRef(
@@ -115,12 +112,14 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     return () => unsubscribe();
   }, []);
 
-  // Trigger comparison when page is selected, authentication is available, Notion is connected, or term changes
+  // Trigger comparison when page is selected, authentication is available, Notion is connected, or the class selection changes
+  const selectedCourseKey = selectedCourseIds.join(',');
+  const candidateKey = candidates.map(c => c.id).join(',');
   useEffect(() => {
     if (selectedPage && firebaseToken && isNotionConnected === true) {
       compareWithNotion();
     }
-  }, [selectedPage, firebaseToken, isNotionConnected, selectedTerm]);
+  }, [selectedPage, firebaseToken, isNotionConnected, selectedCourseKey, candidateKey]);
 
   // Debug log whenever auth or selectedPage changes
   useEffect(() => {
@@ -190,42 +189,62 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     };
   }, []);
 
-  // Load selected term from storage on component mount
-  useEffect(() => {
-    chrome.storage.local.get(['selectedTerm'], (result) => {
-      if (result.selectedTerm) {
-        setSelectedTerm(result.selectedTerm);
-      }
-    });
+  // Load candidate courses from Canvas
+  const loadCandidates = React.useCallback(async () => {
+    setCandidatesLoading(true);
+    setCandidatesError(null);
+    try {
+      setCandidates(await canvasApi.listCandidateCourses());
+    } catch (err) {
+      setCandidatesError(err instanceof Error ? err.message : 'Failed to load classes');
+    } finally {
+      setCandidatesLoading(false);
+    }
   }, []);
 
-  // Handle term selection change
-  const handleTermChange = (term: 'quarter' | 'semester') => {
-    setSelectedTerm(term);
-    // Save to chrome storage
-    chrome.storage.local.set({ selectedTerm: term });
-    
-    // Clear current unsynced items to show loading state
+  useEffect(() => { loadCandidates(); }, [loadCandidates]);
+
+  // Load per-page course selection from storage
+  useEffect(() => {
+    chrome.storage.local.get(['selectedCoursesByPage'], (result) => {
+      const map = (result.selectedCoursesByPage || {}) as Record<string, number[]>;
+      setSelectedCourseIds(map[selectedPage.id] ?? []);
+    });
+    // opportunistically drop the orphaned term key
+    chrome.storage.local.remove(['selectedTerm']);
+  }, [selectedPage?.id]);
+
+  // Handle course selection toggle
+  const handleToggleCourse = (id: number) => {
+    setSelectedCourseIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      chrome.storage.local.get(['selectedCoursesByPage'], (result) => {
+        const map = (result.selectedCoursesByPage || {}) as Record<string, number[]>;
+        chrome.storage.local.set({
+          selectedCoursesByPage: { ...map, [selectedPage.id]: next },
+        });
+      });
+      return next;
+    });
     setUnsyncedItems([]);
-    
-    console.log(`Term system changed to: ${term}`);
   };
+
+  const selectedCourses: SelectedCourse[] = candidates
+    .filter((c) => selectedCourseIds.includes(c.id))
+    .map((c) => ({ id: c.id, name: c.name, code: c.code }));
 
   // New function to compare Canvas assignments with Notion
   const compareWithNotion = async (): Promise<number> => {
-    if (!selectedPage || !firebaseToken) {
-      console.log('Cannot compare: missing page or auth token');
+    if (!selectedPage || !firebaseToken || selectedCourses.length === 0) {
+      setUnsyncedItems([]);
       return 0;
     }
-    
+
     try {
       setIsComparing(true);
-      
+
       // Prepare compare data
-      const compareData = {
-        pageId: selectedPage.id,
-        termSystem: selectedTerm,
-      };
+      const compareData = { pageId: selectedPage.id, courses: selectedCourses };
 
       console.log('Sending COMPARE message with data:', compareData);
       
@@ -301,16 +320,15 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
       return;
     }
 
+    if (selectedCourses.length === 0) return;
+
     try {
       setIsLoading(true);
       setSyncStatus(null);
       setSyncProgress(0);
-      
+
       // Prepare sync data
-      const syncData: SyncData = {
-        pageId: selectedPage.id,
-        termSystem: selectedTerm,
-      };
+      const syncData: SyncData = { pageId: selectedPage.id, courses: selectedCourses };
 
       // Update timestamp regardless of final status
       setLastSync(new Date().toLocaleString());
@@ -378,7 +396,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
   }
 
   // Debug log for button disabled state
-  const buttonDisabled = isLoading || !selectedPage || !firebaseToken || isNotionConnected !== true;
+  const buttonDisabled = isLoading || !selectedPage || !firebaseToken || isNotionConnected !== true || selectedCourses.length === 0 || candidatesLoading;
   console.log('Sync button state:', {
     isLoading,
     hasSelectedPage: !!selectedPage,
@@ -431,10 +449,16 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
           onChangePage={handleChangePageClick}
         />
 
-        {/* Term Selector Section */}
-        <TermSelector 
-          selectedTerm={selectedTerm}
-          onTermChange={handleTermChange}
+        {/* Class Selector Section */}
+        <ClassSelector
+          candidates={candidates}
+          loading={candidatesLoading}
+          error={candidatesError}
+          selectedIds={selectedCourseIds}
+          expanded={classPanelExpanded}
+          onToggleExpanded={() => setClassPanelExpanded((v) => !v)}
+          onToggleCourse={handleToggleCourse}
+          onRetry={loadCandidates}
         />
 
         {/* Unsynced Items Section */}

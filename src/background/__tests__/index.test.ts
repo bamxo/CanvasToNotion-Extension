@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Store mock implementations
 const mockCanvasApi = {
-  getRecentCourses: vi.fn(),
   getAllAssignments: vi.fn()
 };
 
@@ -31,11 +30,6 @@ describe('Background Index Module', () => {
     vi.clearAllMocks();
     
     // Reset the mock implementations
-    mockCanvasApi.getRecentCourses.mockResolvedValue([
-      { id: '123', name: 'Test Course 1' },
-      { id: '456', name: 'Test Course 2' }
-    ]);
-    
     mockCanvasApi.getAllAssignments.mockResolvedValue([
       { id: 'a1', name: 'Assignment 1', courseId: '123', due_at: '2023-12-01', points_possible: 100, html_url: 'https://canvas.test/courses/123/assignments/a1' },
       { id: 'a2', name: 'Assignment 2', courseId: '456', due_at: '2023-12-15', points_possible: 50, html_url: 'https://canvas.test/courses/456/assignments/a2' }
@@ -137,26 +131,24 @@ describe('Background Index Module', () => {
     
     // Test the SYNC_TO_NOTION message
     const result = messageListener(
-      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id' } }, 
-      {}, 
+      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id', courses: [{ id: 123, name: 'Test Course 1', code: 'C1' }] } },
+      {},
       mockSendResponse
     );
-    
+
     // The listener should return true (for async response)
     expect(result).toBe(true);
-    
+
     // Wait for async operations to complete
     await vi.waitFor(() => {
-      expect(mockCanvasApi.getRecentCourses).toHaveBeenCalled();
+      expect(mockCanvasApi.getAllAssignments).toHaveBeenCalledWith([{ id: 123, name: 'Test Course 1', code: 'C1' }]);
     }, { timeout: 1000 });
-    
-    expect(mockCanvasApi.getAllAssignments).toHaveBeenCalled();
-    
+
     // Verify fetch was called with the right endpoint (HEAD request first, then POST)
     await vi.waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000', { method: 'HEAD' });
     }, { timeout: 1000 });
-    
+
     await vi.waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/api/notion/sync', expect.any(Object));
     }, { timeout: 1000 });
@@ -173,21 +165,19 @@ describe('Background Index Module', () => {
     
     // Test the COMPARE message
     const result = messageListener(
-      { type: 'COMPARE', data: { pageId: 'test-page-id' } }, 
-      {}, 
+      { type: 'COMPARE', data: { pageId: 'test-page-id', courses: [{ id: 123, name: 'Test Course 1', code: 'C1' }] } },
+      {},
       mockSendResponse
     );
-    
+
     // The listener should return true (for async response)
     expect(result).toBe(true);
-    
+
     // Wait for async operations to complete
     await vi.waitFor(() => {
-      expect(mockCanvasApi.getRecentCourses).toHaveBeenCalled();
+      expect(mockCanvasApi.getAllAssignments).toHaveBeenCalledWith([{ id: 123, name: 'Test Course 1', code: 'C1' }]);
     }, { timeout: 1000 });
-    
-    expect(mockCanvasApi.getAllAssignments).toHaveBeenCalled();
-    
+
     // Verify fetch was called with the right endpoint (HEAD request first, then POST)
     await vi.waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000', { method: 'HEAD' });
@@ -203,6 +193,20 @@ describe('Background Index Module', () => {
     }, { timeout: 1000 });
   });
   
+  it('rejects SYNC_TO_NOTION_V2 when no courses are selected', async () => {
+    await import('../index');
+    const result = messageListener(
+      { type: 'SYNC_TO_NOTION_V2', data: { pageId: 'p1', courses: [] } },
+      {},
+      mockSendResponse
+    );
+    expect(result).toBe(true);
+    await vi.waitFor(() => {
+      expect(mockSendResponse).toHaveBeenCalledWith({ success: false, error: 'No classes selected' });
+    }, { timeout: 1000 });
+    expect(mockCanvasApi.getAllAssignments).not.toHaveBeenCalled();
+  });
+
   it('handles missing Firebase token', async () => {
     // Mock storage.get to return no token
     (chrome.storage.local.get as any).mockImplementationOnce((_: string[], callback: (result: Record<string, any>) => void) => {
@@ -214,8 +218,8 @@ describe('Background Index Module', () => {
     
     // Test the SYNC_TO_NOTION message
     const result = messageListener(
-      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id' } }, 
-      {}, 
+      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id', courses: [{ id: 123, name: 'Test Course 1', code: 'C1' }] } },
+      {},
       mockSendResponse
     );
     
@@ -261,8 +265,8 @@ describe('Background Index Module', () => {
     
     // Test the SYNC_TO_NOTION message
     const result = messageListener(
-      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id' } }, 
-      {}, 
+      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id', courses: [{ id: 123, name: 'Test Course 1', code: 'C1' }] } },
+      {},
       mockSendResponse
     );
     
@@ -305,8 +309,8 @@ describe('Background Index Module', () => {
     
     // Test the SYNC_TO_NOTION message
     const result = messageListener(
-      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id' } }, 
-      {}, 
+      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id', courses: [{ id: 123, name: 'Test Course 1', code: 'C1' }] } },
+      {},
       mockSendResponse
     );
     
@@ -334,8 +338,8 @@ describe('Background Index Module', () => {
     
     // Test the SYNC_TO_NOTION message
     const result = messageListener(
-      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id' } }, 
-      {}, 
+      { type: 'SYNC_TO_NOTION', data: { pageId: 'test-page-id', courses: [{ id: 123, name: 'Test Course 1', code: 'C1' }] } },
+      {},
       mockSendResponse
     );
     
