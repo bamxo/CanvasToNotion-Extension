@@ -110,10 +110,9 @@ class ConfigService {
   }
 
   private getProductionApiUrl(): string {
-    // Construct production API URL dynamically
-    const domain = 'canvastonotion.netlify.app';
-    const path = '/.netlify/functions';
-    return `https://${domain}${path}`;
+    // Production backend (Vercel). Routers are mounted at bare paths; the
+    // `/notion` prefix is added by getApiEndpoint().
+    return 'https://api2.canvastonotion.io';
   }
 
   private getProductionWebUrl(): string {
@@ -142,9 +141,8 @@ class ConfigService {
     if (this.config.environment === 'development') {
       return 'http://localhost:3000/api/auth/logout';
     }
-    // Construct dynamically for production
-    const domain = 'api.canvastonotion.io';
-    return `https://${domain}/.netlify/functions/auth/logout`;
+    // Production backend (Vercel)
+    return 'https://api2.canvastonotion.io/auth/logout';
   }
 
   async getClearAuthUrl(): Promise<string> {
@@ -152,9 +150,8 @@ class ConfigService {
     if (this.config.environment === 'development') {
       return 'http://localhost:3000/api/cookie-state/clear-authenticated';
     }
-    // Construct dynamically for production
-    const domain = 'api.canvastonotion.io';
-    return `https://${domain}/.netlify/functions/cookie-state/clear-authenticated`;
+    // Production backend (Vercel)
+    return 'https://api2.canvastonotion.io/cookie-state/clear-authenticated';
   }
 
   isDevelopment(): boolean {
