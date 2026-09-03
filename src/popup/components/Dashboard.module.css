@@ -446,6 +446,8 @@
 /* Unsynced Items Styles */
 .unsyncedContainer {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 10px;
   padding: 12px;
@@ -498,6 +500,8 @@
   max-height: 150px;
   overflow-y: auto;
   padding-right: 8px;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .unsyncedItemsList::-webkit-scrollbar {
@@ -521,6 +525,7 @@
   background: rgba(255, 255, 255, 0.07);
   border-radius: 8px;
   padding: 10px;
+  box-sizing: border-box;
   transition: all 0.2s;
   opacity: 0;
   transform: translateY(10px);

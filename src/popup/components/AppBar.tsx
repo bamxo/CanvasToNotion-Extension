@@ -118,6 +118,7 @@ const AppBar = () => {
         'canvasToken',
         'selectedPage',
         'userEmail',
+        'authToken',
         'firebaseToken',
         'tokenTimestamp',
         'userId',

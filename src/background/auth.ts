@@ -1,11 +1,18 @@
 import { getAuth } from '../services/chrome-auth.service';
-import { configService } from '../services/config';
+import { configService, IS_BUILD_BACKEND_OVERRIDE } from '../services/config';
 
 // Use Chrome Identity API instead of Firebase Auth
 const auth = getAuth();
 
 // Function to check for authentication via cookie
 async function checkAuthCookie() {
+  // Skip entirely when testing against an overridden backend (build:vercel):
+  // there is no valid same-site auth cookie, and running this would
+  // re-authenticate the user immediately after logout.
+  if (IS_BUILD_BACKEND_OVERRIDE) {
+    console.log('Backend override build: skipping cookie authentication check');
+    return;
+  }
   // Only run in production mode (not in development)
   if (import.meta.env.MODE === 'production') {
     console.log('Checking for authentication cookie in production mode...');
