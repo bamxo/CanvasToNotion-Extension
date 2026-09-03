@@ -281,9 +281,16 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
               unsyncedAssignments,
               response.data.courses || []
             );
-            
+
             console.log('Formatted unsynced items:', formattedUnsyncedItems);
             setUnsyncedItems(formattedUnsyncedItems);
+            // Any comparison that still finds items to sync clears the sync
+            // status message. It's misleading to show "Sync completed
+            // successfully" above a non-empty list, and (Chrome caps the
+            // popup at 600px) that extra line pushes the Sync button
+            // off-screen. The message only stays when a comparison after a
+            // sync comes back empty.
+            setSyncStatus(null);
             return formattedUnsyncedItems.length;
           } else {
             console.log('No unsynced assignments found in compareResult');
@@ -365,7 +372,9 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
           console.log('Sync completed successfully');
         }
         
-        // Refresh the unsynced items list
+        // Refresh the unsynced items list. compareWithNotion() clears the
+        // sync status message if it still finds items to sync, so "Sync
+        // completed successfully" only remains when everything synced.
         try {
           await compareWithNotion();
         } catch (compareError) {

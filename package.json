@@ -11,7 +11,7 @@
     "build:extension": "vite build && cp public/manifest.json dist/ && cp public/vite.svg dist/",
     "build:extension:dev": "VITE_APP_ENV=development vite build --mode development && cp public/manifest.json dist/ && cp public/vite.svg dist/",
     "build:extension:prod": "VITE_APP_ENV=production vite build --mode production && cp public/manifest.json dist/ && cp public/vite.svg dist/",
-    "build:vercel": "VITE_APP_ENV=production VITE_API_BASE=https://canvas-to-notion-backend.vercel.app VITE_WEB_BASE=http://localhost:5173 vite build --mode production && cp public/manifest.json dist/ && cp public/vite.svg dist/",
+    "build:vercel": "VITE_APP_ENV=production VITE_API_BASE=https://api2.canvastonotion.io VITE_WEB_BASE=http://localhost:5173 vite build --mode production && cp public/manifest.json dist/ && cp public/vite.svg dist/",
     "lint": "eslint . --ext js,jsx,ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest run --coverage",
