@@ -33,6 +33,21 @@ vi.mock('../../services/chrome-auth.service', () => ({
   }),
 }))
 
+const fetchEntitlements = vi.fn().mockResolvedValue({
+  tier: 'free', classSyncLimit: 5, classSyncUsed: 4,
+  syncedCourseIds: ['1', '2', '3', '4'],
+})
+vi.mock('../../services/entitlements.service', () => ({
+  fetchEntitlements: (...a: unknown[]) => fetchEntitlements(...a),
+}))
+
+vi.mock('../../services/config', () => ({
+  configService: {
+    getWebAppBaseUrl: async () => 'https://canvastonotion.io',
+    getUsersApiEndpoint: async (p: string) => p,
+  },
+}))
+
 // Keep unrelated children out of the way; ClassSelector stays real.
 vi.mock('../AppBar', () => ({ default: () => <div data-testid="app-bar" /> }))
 vi.mock('../PageSelectionContainer', () => ({ default: () => <div data-testid="page-selection-container" /> }))
@@ -93,6 +108,12 @@ describe('Dashboard class selection', () => {
     expect(syncBtn).toBeDisabled()
   })
 
+  it('fetches entitlements once the firebase token is available', async () => {
+    listCandidateCourses.mockResolvedValue([{ ...COURSE, id: 1, name: 'Alpha' }])
+    render(<Dashboard selectedPage={selectedPage} />)
+    await waitFor(() => expect(fetchEntitlements).toHaveBeenCalledWith('fake-token'))
+  })
+
   it('persists selection under selectedCoursesByPage keyed by pageId', async () => {
     render(<Dashboard selectedPage={selectedPage} />)
     fireEvent.click(await screen.findByRole('button', { name: /select classes to sync/i }))
@@ -103,5 +124,27 @@ describe('Dashboard class selection', () => {
         expect.objectContaining({ selectedCoursesByPage: { 'page-1': [1] } }),
       )
     })
+  })
+
+  it('defers the Notion compare until the class selector is closed', async () => {
+    const compareCalls = () =>
+      (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock.calls
+        .filter((c: unknown[]) => (c[0] as { type?: string })?.type === 'COMPARE')
+
+    render(<Dashboard selectedPage={selectedPage} />)
+    fireEvent.click(await screen.findByRole('button', { name: /select classes to sync/i }))
+    fireEvent.click(await screen.findByRole('checkbox'))
+
+    // selection persisted, but the panel is still open -> no COMPARE yet
+    await waitFor(() => {
+      expect(chrome.storage.local.set).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedCoursesByPage: { 'page-1': [1] } }),
+      )
+    })
+    expect(compareCalls()).toHaveLength(0)
+
+    // close the panel -> exactly one COMPARE fires
+    fireEvent.click(screen.getByRole('button', { name: /classes: 1 \/ 5 selected/i }))
+    await waitFor(() => expect(compareCalls().length).toBeGreaterThanOrEqual(1))
   })
 })

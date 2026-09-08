@@ -791,6 +791,28 @@
 
 .classSelectorCheckbox { accent-color: #ff6b35; flex-shrink: 0; }
 
+.classSelectorRowLocked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.classSelectorRowLocked .classSelectorCheckbox {
+  cursor: not-allowed;
+}
+
+.classSelectorCapNotice {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ff6b35;
+}
+
+.classSelectorCapNotice a {
+  color: #ff6b35;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .classSelectorCourseName {
   flex: 1;
   min-width: 0;
