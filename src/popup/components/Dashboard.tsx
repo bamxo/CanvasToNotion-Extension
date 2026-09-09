@@ -10,7 +10,8 @@ import axios from 'axios'
 import styles from './Dashboard.module.css'
 import { getAuth, AuthUser } from '../../services/chrome-auth.service'
 import AppBar from './AppBar'
-import PageSelectionContainer from './PageSelectionContainer'
+import PageHeader from './PageHeader'
+import UsageCounter from './UsageCounter'
 import UnsyncedContainer from './UnsyncedContainer'
 import SyncButton from './SyncButton'
 import NotionDisconnected from './NotionDisconnected'
@@ -244,6 +245,14 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     () => new Set((entitlements?.syncedCourseIds ?? []).map(Number)),
     [entitlements],
   );
+  // Names of the classes occupying used slots, in the backend's order, so the
+  // usage meter can name each filled segment on hover.
+  const syncedCourseNames = React.useMemo(() => {
+    const byId = new Map(candidates.map((c) => [c.id, c.name]));
+    return (entitlements?.syncedCourseIds ?? []).map(
+      (id) => byId.get(Number(id)) ?? 'Synced class',
+    );
+  }, [candidates, entitlements]);
   const pendingNewCount = selectedCourseIds.filter((id) => !syncedIdSet.has(id)).length;
   const usedSlots = syncedIdSet.size + pendingNewCount;
   const atClassCap = classLimit !== null && usedSlots >= classLimit;
@@ -489,11 +498,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
       {particles}
 
       <div className={`${styles.content} ${styles.fadeIn}`}>
-        <PageSelectionContainer 
-          selectedPage={selectedPage}
-          onPageSelect={handleChangePageClick}
-          onChangePage={handleChangePageClick}
-        />
+        <PageHeader page={selectedPage} onBack={handleChangePageClick} />
 
         {/* Class Selector Section */}
         <ClassSelector
@@ -513,14 +518,25 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
 
         {/* Unsynced Items Section */}
         {selectedPage && firebaseToken && (
-          <UnsyncedContainer 
+          <UnsyncedContainer
             unsyncedItems={unsyncedItems}
             onClearItems={() => setUnsyncedItems([])}
             isLoading={isComparing}
           />
         )}
 
-        <SyncButton 
+        {/* Free-tier usage meter — paid tiers don't see this. The meter fills
+            from what's actually synced to the DB, not from selections. */}
+        {entitlements?.tier === 'free' && classLimit !== null && (
+          <UsageCounter
+            used={syncedIdSet.size}
+            usedClasses={syncedCourseNames}
+            limit={classLimit}
+            upgradeUrl={settingsUrl}
+          />
+        )}
+
+        <SyncButton
           onSync={handleSync}
           isLoading={isLoading}
           disabled={buttonDisabled}

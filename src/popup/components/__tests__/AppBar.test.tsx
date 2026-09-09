@@ -3,6 +3,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import * as apiConfig from '../../../services/api.config';
 
+// Keep the plan lookup off the network. Individual tests override the resolved
+// value; by default it rejects so the status line stays on "Signed In".
+const fetchEntitlements = vi.fn().mockRejectedValue(new Error('no entitlements'));
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../../../services/entitlements.service', () => ({
+  fetchEntitlements: (...a: unknown[]) => fetchEntitlements(...a),
+}));
+
 // Mock Firebase auth using factory functions
 vi.mock('firebase/auth', () => {
   const mockAuth = {
@@ -39,6 +47,8 @@ vi.mock('../AppBar.module.css', () => ({
     userText: 'userText',
     userName: 'userName',
     userStatus: 'userStatus',
+    userStatusTier: 'userStatusTier',
+    userStatusDot: 'userStatusDot',
     actions: 'actions',
     iconButton: 'iconButton',
   },
@@ -65,7 +75,8 @@ describe('AppBar Component', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
-    
+    fetchEntitlements.mockRejectedValue(new Error('no entitlements'));
+
     // Setup mock auth object
     mockAuth = {
       signOut: vi.fn(),
@@ -300,6 +311,46 @@ describe('AppBar Component', () => {
       
       // Should fallback to default image
       expect(profileImage).toHaveAttribute('src', 'mocked-default-profile.svg');
+    });
+  });
+
+  describe('Plan status line', () => {
+    beforeEach(() => {
+      // Authenticated via stored email + token, so the tier lookup can run.
+      mockOnAuthStateChanged.mockImplementation((_auth: any, callback: any) => {
+        callback(null);
+        return vi.fn();
+      });
+      mockChromeStorage.local.get.mockImplementation((_keys: any, callback: any) => {
+        callback({ userEmail: 'member@example.com', firebaseToken: 'tok-123' });
+      });
+    });
+
+    it.each([
+      ['free', 'Free Plan'],
+      ['pro', 'Pro Plan'],
+      ['lifetime', 'Lifetime Member'],
+      ['legacy', 'Legacy Member'],
+    ])('shows "%s" tier as "%s"', async (tier, label) => {
+      fetchEntitlements.mockResolvedValue({
+        tier,
+        classSyncLimit: tier === 'free' ? 5 : null,
+        classSyncUsed: 0,
+        syncedCourseIds: [],
+      });
+
+      render(<AppBar />);
+
+      expect(await screen.findByText(label)).toBeInTheDocument();
+      expect(fetchEntitlements).toHaveBeenCalledWith('tok-123');
+    });
+
+    it('falls back to "Signed In" when the tier lookup fails', async () => {
+      fetchEntitlements.mockRejectedValue(new Error('offline'));
+
+      render(<AppBar />);
+
+      expect(await screen.findByText('Signed In')).toBeInTheDocument();
     });
   });
 

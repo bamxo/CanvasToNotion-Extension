@@ -50,7 +50,7 @@ vi.mock('../../services/config', () => ({
 
 // Keep unrelated children out of the way; ClassSelector stays real.
 vi.mock('../AppBar', () => ({ default: () => <div data-testid="app-bar" /> }))
-vi.mock('../PageSelectionContainer', () => ({ default: () => <div data-testid="page-selection-container" /> }))
+vi.mock('./PageHeader', () => ({ default: () => <div data-testid="page-header" /> }))
 vi.mock('../UnsyncedContainer', () => ({ default: () => <div data-testid="unsynced-container" /> }))
 vi.mock('../NotionDisconnected', () => ({ default: () => <div data-testid="notion-disconnected" /> }))
 vi.mock('../SyncButton', () => ({
@@ -144,7 +144,7 @@ describe('Dashboard class selection', () => {
     expect(compareCalls()).toHaveLength(0)
 
     // close the panel -> exactly one COMPARE fires
-    fireEvent.click(screen.getByRole('button', { name: /classes: 1 \/ 5 selected/i }))
+    fireEvent.click(screen.getByRole('button', { name: /classes: 1 selected/i }))
     await waitFor(() => expect(compareCalls().length).toBeGreaterThanOrEqual(1))
   })
 })

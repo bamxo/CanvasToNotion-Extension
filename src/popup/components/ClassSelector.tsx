@@ -71,9 +71,7 @@ const ClassSelector: React.FC<ClassSelectorProps> = ({
         <FaCalendarAlt className={styles.classSelectorIcon} />
         {count > 0 ? (
           <span className={styles.classSelectorSummary}>
-            {classLimit !== null
-              ? `Classes: ${count} / ${classLimit} selected`
-              : `Classes: ${count} selected`}
+            Classes: {count} selected
           </span>
         ) : (
           <span className={styles.classSelectorEmpty}>Select classes to sync</span>

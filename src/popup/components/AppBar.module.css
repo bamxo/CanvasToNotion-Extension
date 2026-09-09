@@ -50,6 +50,23 @@
   text-align: left;
 }
 
+/* Plan status line: a colored dot + label, tinted per tier via inline style */
+.userStatusTier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.userStatusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
 .actions {
   display: flex;
   gap: 8px;

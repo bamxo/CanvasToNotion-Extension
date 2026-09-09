@@ -130,8 +130,9 @@ describe('ClassSelector', () => {
     )
   })
 
-  it('shows "/ limit" in the collapsed summary when a limit applies', () => {
+  it('collapsed summary shows only the count, never the limit', () => {
     render(<ClassSelector {...baseProps} selectedIds={[1, 2]} classLimit={5} />)
-    expect(screen.getByText('Classes: 2 / 5 selected')).toBeInTheDocument()
+    expect(screen.getByText('Classes: 2 selected')).toBeInTheDocument()
+    expect(screen.queryByText(/\/ 5/)).not.toBeInTheDocument()
   })
 })

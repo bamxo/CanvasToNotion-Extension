@@ -5,6 +5,7 @@ import settingIcon from '../../assets/setting.svg'
 import logoutIcon from '../../assets/logout.svg'
 import { configService } from '../../services/config'
 import { getAuth } from '../../services/chrome-auth.service'
+import { fetchEntitlements, ExtensionEntitlements } from '../../services/entitlements.service'
 
 interface UserInfo {
   displayName: string;
@@ -14,10 +15,21 @@ interface UserInfo {
   extensionId?: string;
 }
 
+type Tier = ExtensionEntitlements['tier'];
+
+/** Status line shown under the user's name, keyed by plan. */
+const TIER_STATUS: Record<Tier, { label: string; color: string }> = {
+  free: { label: 'Free Plan', color: '#9E9E9E' },
+  pro: { label: 'Pro Plan', color: '#4CAF50' },
+  lifetime: { label: 'Lifetime Member', color: '#FF6A2C' },
+  legacy: { label: 'Legacy Member', color: '#FF6A2C' },
+};
+
 const AppBar = () => {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [tier, setTier] = useState<Tier | null>(null);
 
   useEffect(() => {
     const auth = getAuth();
@@ -82,6 +94,26 @@ const AppBar = () => {
       chrome.runtime.onMessageExternal.removeListener(handleExternalMessage);
     };
   }, []);
+
+  // Load the signed-in user's plan so the status line can show it.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setTier(null);
+      return;
+    }
+    let cancelled = false;
+    chrome.storage.local.get(['firebaseToken', 'authToken'], async (result) => {
+      const token = result.firebaseToken || result.authToken;
+      if (!token) return;
+      try {
+        const entitlements = await fetchEntitlements(token);
+        if (!cancelled) setTier(entitlements.tier);
+      } catch (err) {
+        console.error('Error loading plan for AppBar:', err);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
 
   const handleLogout = async () => {
     console.log('Attempting to logout...');
@@ -173,7 +205,19 @@ const AppBar = () => {
             {userInfo?.displayName || (isAuthenticated ? userEmail?.split('@')[0] : 'Guest')}
           </div>
           <div className={styles.userStatus}>
-            {isAuthenticated ? 'Signed In' : 'Not Signed In'}
+            {!isAuthenticated ? (
+              'Not Signed In'
+            ) : tier ? (
+              <span
+                className={styles.userStatusTier}
+                style={{ color: TIER_STATUS[tier].color }}
+              >
+                <span className={styles.userStatusDot} />
+                {TIER_STATUS[tier].label}
+              </span>
+            ) : (
+              'Signed In'
+            )}
           </div>
         </div>
       </div>
