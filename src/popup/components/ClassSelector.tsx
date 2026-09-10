@@ -8,6 +8,10 @@ interface ClassSelectorProps {
   loading: boolean;
   error: string | null;
   selectedIds: number[];
+  syncedCourseIds: number[];
+  atCap: boolean;
+  classLimit: number | null;
+  upgradeUrl: string;
   expanded: boolean;
   onToggleExpanded: () => void;
   onToggleCourse: (id: number) => void;
@@ -47,11 +51,12 @@ export function groupCoursesByTerm(courses: CandidateCourse[]): TermGroup[] {
 }
 
 const ClassSelector: React.FC<ClassSelectorProps> = ({
-  candidates, loading, error, selectedIds, expanded,
-  onToggleExpanded, onToggleCourse, onRetry,
+  candidates, loading, error, selectedIds, syncedCourseIds, atCap, classLimit, upgradeUrl,
+  expanded, onToggleExpanded, onToggleCourse, onRetry,
 }) => {
   const count = selectedIds.length;
   const groups = groupCoursesByTerm(candidates);
+  const syncedSet = new Set(syncedCourseIds);
 
   return (
     <div
@@ -65,7 +70,9 @@ const ClassSelector: React.FC<ClassSelectorProps> = ({
       >
         <FaCalendarAlt className={styles.classSelectorIcon} />
         {count > 0 ? (
-          <span className={styles.classSelectorSummary}>{`Classes: ${count} selected`}</span>
+          <span className={styles.classSelectorSummary}>
+            Classes: {count} selected
+          </span>
         ) : (
           <span className={styles.classSelectorEmpty}>Select classes to sync</span>
         )}
@@ -91,21 +98,37 @@ const ClassSelector: React.FC<ClassSelectorProps> = ({
             <p className={styles.classSelectorEmptyList}>No Canvas classes found for your account.</p>
           )}
 
+          {!loading && !error && atCap && classLimit !== null && (
+            <p className={styles.classSelectorCapNotice}>
+              Free plan: {classLimit} of {classLimit} classes used.{' '}
+              <a href={upgradeUrl} target="_blank" rel="noreferrer">Upgrade</a> to sync more.
+            </p>
+          )}
+
           {!loading && !error && groups.map((group) => (
             <div key={group.termId ?? 'other'} className={styles.classSelectorGroup}>
               <div className={styles.classSelectorGroupHeader}>{group.termName}</div>
-              {group.courses.map((c) => (
-                <label key={c.id} className={styles.classSelectorRow}>
-                  <input
-                    type="checkbox"
-                    className={styles.classSelectorCheckbox}
-                    checked={selectedIds.includes(c.id)}
-                    onChange={() => onToggleCourse(c.id)}
-                  />
-                  <span className={styles.classSelectorCourseName}>{c.name}</span>
-                  {c.code && <span className={styles.classSelectorCourseCode}>{c.code}</span>}
-                </label>
-              ))}
+              {group.courses.map((c) => {
+                const isSynced = syncedSet.has(c.id);
+                const isSelected = selectedIds.includes(c.id);
+                const locked = atCap && !isSynced && !isSelected;
+                return (
+                  <label
+                    key={c.id}
+                    className={`${styles.classSelectorRow} ${locked ? styles.classSelectorRowLocked : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className={styles.classSelectorCheckbox}
+                      checked={isSelected}
+                      disabled={locked}
+                      onChange={() => { if (!locked) onToggleCourse(c.id); }}
+                    />
+                    <span className={styles.classSelectorCourseName}>{c.name}</span>
+                    {c.code && <span className={styles.classSelectorCourseCode}>{c.code}</span>}
+                  </label>
+                );
+              })}
             </div>
           ))}
         </div>

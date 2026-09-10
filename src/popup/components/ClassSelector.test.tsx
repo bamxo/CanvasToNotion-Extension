@@ -14,6 +14,10 @@ const baseProps = {
   loading: false,
   error: null as string | null,
   selectedIds: [] as number[],
+  syncedCourseIds: [] as number[],
+  atCap: false,
+  classLimit: null as number | null,
+  upgradeUrl: 'https://canvastonotion.io/settings',
   expanded: false,
   onToggleExpanded: vi.fn(),
   onToggleCourse: vi.fn(),
@@ -86,5 +90,49 @@ describe('ClassSelector', () => {
   it('expanded with no candidates shows the empty-list message', () => {
     render(<ClassSelector {...baseProps} expanded />)
     expect(screen.getByText('No Canvas classes found for your account.')).toBeInTheDocument()
+  })
+
+  it('at cap: disables courses that are neither synced nor already selected', () => {
+    render(<ClassSelector
+      {...baseProps}
+      expanded
+      atCap
+      classLimit={5}
+      syncedCourseIds={[1]}
+      selectedIds={[1]}
+      candidates={[
+        course({ id: 1, name: 'Synced', term: { id: 10, name: 'Fall 2026', startAt: '2026-09-20T00:00:00Z' } }),
+        course({ id: 2, name: 'Locked', term: { id: 10, name: 'Fall 2026', startAt: '2026-09-20T00:00:00Z' } }),
+      ]}
+    />)
+    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+    expect(boxes[0].disabled).toBe(false)
+    expect(boxes[1].disabled).toBe(true)
+  })
+
+  it('at cap: clicking a locked checkbox does not call onToggleCourse', () => {
+    const onToggleCourse = vi.fn()
+    render(<ClassSelector
+      {...baseProps} expanded atCap classLimit={5}
+      candidates={[course({ id: 2, name: 'Locked' })]}
+      onToggleCourse={onToggleCourse}
+    />)
+    fireEvent.click(screen.getAllByRole('checkbox')[0])
+    expect(onToggleCourse).not.toHaveBeenCalled()
+  })
+
+  it('at cap: renders the upgrade notice with a link', () => {
+    render(<ClassSelector {...baseProps} expanded atCap classLimit={5}
+      candidates={[course({ id: 2, name: 'Locked' })]} />)
+    expect(screen.getByText(/5 of 5 classes used/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /upgrade/i })).toHaveAttribute(
+      'href', 'https://canvastonotion.io/settings',
+    )
+  })
+
+  it('collapsed summary shows only the count, never the limit', () => {
+    render(<ClassSelector {...baseProps} selectedIds={[1, 2]} classLimit={5} />)
+    expect(screen.getByText('Classes: 2 selected')).toBeInTheDocument()
+    expect(screen.queryByText(/\/ 5/)).not.toBeInTheDocument()
   })
 })

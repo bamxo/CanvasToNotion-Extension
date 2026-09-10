@@ -145,6 +145,16 @@ class ConfigService {
     return 'https://api2.canvastonotion.io/auth/logout';
   }
 
+  async getUsersApiEndpoint(path: string): Promise<string> {
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    if (BUILD_API_BASE) return `${BUILD_API_BASE}/users${normalized}`;
+    await this.initialize();
+    if (this.config.environment === 'development') {
+      return `http://localhost:3000/api/users${normalized}`;
+    }
+    return `https://api2.canvastonotion.io/users${normalized}`;
+  }
+
   async getClearAuthUrl(): Promise<string> {
     if (BUILD_API_BASE) return `${BUILD_API_BASE}/cookie-state/clear-authenticated`;
     if (this.config.environment === 'development') {

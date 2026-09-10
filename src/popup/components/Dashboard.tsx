@@ -10,7 +10,8 @@ import axios from 'axios'
 import styles from './Dashboard.module.css'
 import { getAuth, AuthUser } from '../../services/chrome-auth.service'
 import AppBar from './AppBar'
-import PageSelectionContainer from './PageSelectionContainer'
+import PageHeader from './PageHeader'
+import UsageCounter from './UsageCounter'
 import UnsyncedContainer from './UnsyncedContainer'
 import SyncButton from './SyncButton'
 import NotionDisconnected from './NotionDisconnected'
@@ -19,6 +20,7 @@ import { canvasApi } from '../../services/canvas/api'
 import type { CandidateCourse, SelectedCourse } from '../../services/canvas/api'
 import { UnsyncedItem, transformCanvasAssignments } from '../utils/assignmentTransformer'
 import { ENDPOINTS } from '../../services/api.config'
+import { fetchEntitlements, ExtensionEntitlements } from '../../services/entitlements.service'
 
 
 interface NotionPage {
@@ -64,6 +66,8 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
   const [candidatesError, setCandidatesError] = useState<string | null>(null)
   const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([])
   const [classPanelExpanded, setClassPanelExpanded] = useState(false)
+  const [entitlements, setEntitlements] = useState<ExtensionEntitlements | null>(null)
+  const [settingsUrl, setSettingsUrl] = useState('https://canvastonotion.io/settings')
 
   // Generate array of particles with useRef to avoid re-creation on re-renders
   const particles = useRef(
@@ -112,14 +116,18 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     return () => unsubscribe();
   }, []);
 
-  // Trigger comparison when page is selected, authentication is available, Notion is connected, or the class selection changes
+  // Trigger comparison when the page is selected, auth is available, or Notion
+  // connects. Selection changes only re-trigger while the class selector is
+  // CLOSED: mid-selection toggles (panel expanded) are deferred, so we run a
+  // single /compare when the user closes the panel instead of one per click.
   const selectedCourseKey = selectedCourseIds.join(',');
   const candidateKey = candidates.map(c => c.id).join(',');
   useEffect(() => {
+    if (classPanelExpanded) return;
     if (selectedPage && firebaseToken && isNotionConnected === true) {
       compareWithNotion();
     }
-  }, [selectedPage, firebaseToken, isNotionConnected, selectedCourseKey, candidateKey]);
+  }, [selectedPage, firebaseToken, isNotionConnected, selectedCourseKey, candidateKey, classPanelExpanded]);
 
   // Debug log whenever auth or selectedPage changes
   useEffect(() => {
@@ -173,6 +181,24 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     }
   }, [firebaseToken]);
 
+  // Load the signed-in user's entitlements (plan + class-sync usage)
+  const loadEntitlements = React.useCallback(async () => {
+    if (!firebaseToken) return;
+    try {
+      setEntitlements(await fetchEntitlements(firebaseToken));
+    } catch (err) {
+      console.error('Error loading entitlements:', err);
+    }
+  }, [firebaseToken]);
+
+  useEffect(() => { loadEntitlements(); }, [loadEntitlements]);
+
+  useEffect(() => {
+    import('../../services/config').then(({ configService }) =>
+      configService.getWebAppBaseUrl().then((base) => setSettingsUrl(`${base}/settings`)),
+    );
+  }, []);
+
   // Listen for sync progress updates from background script
   useEffect(() => {
     const handleMessage = (message: any) => {
@@ -214,10 +240,29 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
     chrome.storage.local.remove(['selectedTerm']);
   }, [selectedPage?.id]);
 
+  const classLimit = entitlements?.classSyncLimit ?? null;
+  const syncedIdSet = React.useMemo(
+    () => new Set((entitlements?.syncedCourseIds ?? []).map(Number)),
+    [entitlements],
+  );
+  // Names of the classes occupying used slots, in the backend's order, so the
+  // usage meter can name each filled segment on hover.
+  const syncedCourseNames = React.useMemo(() => {
+    const byId = new Map(candidates.map((c) => [c.id, c.name]));
+    return (entitlements?.syncedCourseIds ?? []).map(
+      (id) => byId.get(Number(id)) ?? 'Synced class',
+    );
+  }, [candidates, entitlements]);
+  const pendingNewCount = selectedCourseIds.filter((id) => !syncedIdSet.has(id)).length;
+  const usedSlots = syncedIdSet.size + pendingNewCount;
+  const atClassCap = classLimit !== null && usedSlots >= classLimit;
+
   // Handle course selection toggle
   const handleToggleCourse = (id: number) => {
     setSelectedCourseIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      const isRemoving = prev.includes(id);
+      if (!isRemoving && atClassCap && !syncedIdSet.has(id)) return prev;
+      const next = isRemoving ? prev.filter((x) => x !== id) : [...prev, id];
       chrome.storage.local.get(['selectedCoursesByPage'], (result) => {
         const map = (result.selectedCoursesByPage || {}) as Record<string, number[]>;
         chrome.storage.local.set({
@@ -377,6 +422,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
         // completed successfully" only remains when everything synced.
         try {
           await compareWithNotion();
+          await loadEntitlements();
         } catch (compareError) {
           console.error('Error refreshing unsynced items:', compareError);
         }
@@ -452,11 +498,7 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
       {particles}
 
       <div className={`${styles.content} ${styles.fadeIn}`}>
-        <PageSelectionContainer 
-          selectedPage={selectedPage}
-          onPageSelect={handleChangePageClick}
-          onChangePage={handleChangePageClick}
-        />
+        <PageHeader page={selectedPage} onBack={handleChangePageClick} />
 
         {/* Class Selector Section */}
         <ClassSelector
@@ -464,6 +506,10 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
           loading={candidatesLoading}
           error={candidatesError}
           selectedIds={selectedCourseIds}
+          syncedCourseIds={[...syncedIdSet]}
+          atCap={atClassCap}
+          classLimit={classLimit}
+          upgradeUrl={settingsUrl}
           expanded={classPanelExpanded}
           onToggleExpanded={() => setClassPanelExpanded((v) => !v)}
           onToggleCourse={handleToggleCourse}
@@ -472,14 +518,25 @@ const Dashboard = ({ selectedPage }: DashboardProps) => {
 
         {/* Unsynced Items Section */}
         {selectedPage && firebaseToken && (
-          <UnsyncedContainer 
+          <UnsyncedContainer
             unsyncedItems={unsyncedItems}
             onClearItems={() => setUnsyncedItems([])}
             isLoading={isComparing}
           />
         )}
 
-        <SyncButton 
+        {/* Free-tier usage meter — paid tiers don't see this. The meter fills
+            from what's actually synced to the DB, not from selections. */}
+        {entitlements?.tier === 'free' && classLimit !== null && (
+          <UsageCounter
+            used={syncedIdSet.size}
+            usedClasses={syncedCourseNames}
+            limit={classLimit}
+            upgradeUrl={settingsUrl}
+          />
+        )}
+
+        <SyncButton
           onSync={handleSync}
           isLoading={isLoading}
           disabled={buttonDisabled}
