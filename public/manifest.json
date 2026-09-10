@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Canvas to Notion",
   "description": "Seamlessly sync your Canvas assignments to Notion",
   "icons": {
