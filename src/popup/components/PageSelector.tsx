@@ -12,6 +12,7 @@ interface NotionPage {
   title: string;
   icon?: string;
   type?: string;
+  parentId?: string | null;
 }
 
 interface PageSelectorProps {

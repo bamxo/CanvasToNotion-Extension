@@ -161,6 +161,39 @@
   text-align: center;
 }
 
+.breadcrumbBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.breadcrumbItem {
+  background: none;
+  border: none;
+  color: #CBCBCA;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.breadcrumbItem:hover:not(:disabled) {
+  color: #FFFFFF;
+}
+
+.breadcrumbItem:disabled {
+  color: #FFFFFF;
+  cursor: default;
+}
+
+.breadcrumbSeparator {
+  color: #CBCBCA;
+  font-size: 8px;
+}
+
 .pageList {
   width: 100%;
   display: flex;
@@ -168,9 +201,11 @@
   gap: 8px;
   max-height: 240px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 10px;
   margin: 10px 0;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .pageList::-webkit-scrollbar {
@@ -186,22 +221,72 @@
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 7px;
-  padding: 12px;
   color: #FFFFFF;
   font-size: 14px;
   font-weight: 400;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.pageItem:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pageItemMain {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  box-sizing: border-box;
   text-align: left;
-  transition: background-color 0.2s, border-color 0.2s;
+  border-radius: 6px 0 0 6px;
+  transition: background-color 0.2s;
 }
 
-.pageItem:hover {
+.pageItemMain:only-child {
+  border-radius: 6px;
+}
+
+.pageItemMain:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pageItemDivider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.drillIntoButton {
+  background: none;
+  border: none;
+  color: #CBCBCA;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 0 6px 6px 0;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.drillIntoButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
 }
 
 .pageIcon {
@@ -220,6 +305,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.legend {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #CBCBCA;
+  font-size: 12px;
+}
+
+.legendIcon {
+  font-size: 12px;
+  color: #CBCBCA;
 }
 
 .loadingContainer,

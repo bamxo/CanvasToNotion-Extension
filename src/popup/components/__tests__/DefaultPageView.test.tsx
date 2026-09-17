@@ -10,7 +10,8 @@ import * as apiConfig from '../../../services/api.config';
 vi.mock('react-icons/fa', () => ({
   FaFile: () => <span data-testid="mock-file-icon">📄</span>,
   FaExclamationCircle: () => <span data-testid="mock-exclamation-icon">⚠️</span>,
-  FaCog: () => <span data-testid="mock-cog-icon">⚙️</span>
+  FaCog: () => <span data-testid="mock-cog-icon">⚙️</span>,
+  FaChevronRight: (props: any) => <span data-testid="mock-chevron-icon" {...props}>›</span>
 }));
 
 // Mock CSS modules
@@ -32,7 +33,16 @@ vi.mock('../PageSelector.module.css', () => ({
     disconnectedMessage: 'disconnected-message-mock',
     settingsButton: 'settings-button-mock',
     settingsIcon: 'settings-icon-mock',
-    defaultPageWrapper: 'default-page-wrapper-mock'
+    defaultPageWrapper: 'default-page-wrapper-mock',
+    breadcrumbBar: 'breadcrumb-bar-mock',
+    breadcrumbItem: 'breadcrumb-item-mock',
+    breadcrumbSeparator: 'breadcrumb-separator-mock',
+    pageItemMain: 'page-item-main-mock',
+    pageItemDivider: 'page-item-divider-mock',
+    drillIntoButton: 'drill-into-button-mock',
+    legend: 'legend-mock',
+    legendItem: 'legend-item-mock',
+    legendIcon: 'legend-icon-mock'
   }
 }));
 
@@ -82,7 +92,7 @@ describe('DefaultPageView Component', () => {
       );
 
       expect(screen.getByText('Select a Page')).toBeInTheDocument();
-      expect(screen.getByText('Choose a Notion page to export to. You can switch pages again at any time.')).toBeInTheDocument();
+      expect(screen.getByText('Tap a page to sync to it, or tap the arrow to look inside.')).toBeInTheDocument();
     });
 
     it('should render loading indicator when isLoading is true', () => {
@@ -146,9 +156,22 @@ describe('DefaultPageView Component', () => {
       );
 
       // Mock file icons should be rendered for pages without custom icons
+      // (plus one more in the "Select page" legend at the bottom)
       const fileIcons = screen.getAllByTestId('mock-file-icon');
-      // Two pages without custom icons (Page 1 and Page 3)
-      expect(fileIcons).toHaveLength(2);
+      expect(fileIcons).toHaveLength(3);
+    });
+
+    it('should render the legend explaining tap-to-select vs tap-to-view-subpages', () => {
+      render(
+        <DefaultPageView
+          pages={mockPages}
+          isLoading={false}
+          onPageSelect={mockOnPageSelect}
+        />
+      );
+
+      expect(screen.getByText('Select page')).toBeInTheDocument();
+      expect(screen.getByText('View subpages')).toBeInTheDocument();
     });
 
     it('should render an empty list when no pages are provided', () => {
@@ -343,6 +366,74 @@ describe('DefaultPageView Component', () => {
         url: 'https://canvastonotion.netlify.app/settings' 
       });
       expect(window.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('Nested page navigation', () => {
+    const nestedPages = [
+      { id: 'root-1', title: 'Class Notes', parentId: null },
+      { id: 'root-2', title: 'Assignments', parentId: null },
+      { id: 'child-1', title: 'Unit 1', parentId: 'root-1' },
+      { id: 'child-2', title: 'Unit 2', parentId: 'root-1' },
+    ];
+
+    it('shows only root-level pages initially and no breadcrumb bar', () => {
+      render(
+        <DefaultPageView pages={nestedPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+      );
+
+      expect(screen.getByText('Class Notes')).toBeInTheDocument();
+      expect(screen.getByText('Assignments')).toBeInTheDocument();
+      expect(screen.queryByText('Unit 1')).not.toBeInTheDocument();
+      expect(screen.queryByText('All pages')).not.toBeInTheDocument();
+    });
+
+    it('renders a drill-into affordance only for pages that have children', () => {
+      render(
+        <DefaultPageView pages={nestedPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+      );
+
+      const drillIcons = screen.getAllByTestId('drill-into');
+      expect(drillIcons).toHaveLength(1); // only "Class Notes" has children
+    });
+
+    it('drills into a page\'s children when its drill-into icon is clicked, without selecting it', () => {
+      render(
+        <DefaultPageView pages={nestedPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+      );
+
+      fireEvent.click(screen.getByTestId('drill-into'));
+
+      expect(screen.getByText('Unit 1')).toBeInTheDocument();
+      expect(screen.getByText('Unit 2')).toBeInTheDocument();
+      expect(screen.queryByText('Assignments')).not.toBeInTheDocument();
+      expect(mockOnPageSelect).not.toHaveBeenCalled();
+    });
+
+    it('shows a breadcrumb trail after drilling in, and clicking a page row still selects it', () => {
+      render(
+        <DefaultPageView pages={nestedPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+      );
+
+      fireEvent.click(screen.getByTestId('drill-into'));
+      expect(screen.getByText('All pages')).toBeInTheDocument();
+      expect(screen.getByText('Class Notes')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Unit 1'));
+      expect(mockOnPageSelect).toHaveBeenCalledWith(nestedPages[2]);
+    });
+
+    it('returns to the root list when "All pages" is clicked', () => {
+      render(
+        <DefaultPageView pages={nestedPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+      );
+
+      fireEvent.click(screen.getByTestId('drill-into'));
+      fireEvent.click(screen.getByText('All pages'));
+
+      expect(screen.getByText('Class Notes')).toBeInTheDocument();
+      expect(screen.getByText('Assignments')).toBeInTheDocument();
+      expect(screen.queryByText('Unit 1')).not.toBeInTheDocument();
     });
   });
 
