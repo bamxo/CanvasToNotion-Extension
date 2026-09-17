@@ -163,7 +163,7 @@
 
 .breadcrumbBar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
   width: 100%;
@@ -178,6 +178,15 @@
   font-weight: 400;
   cursor: pointer;
   padding: 2px 4px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumbItem:first-child {
+  flex-shrink: 0;
 }
 
 .breadcrumbItem:hover:not(:disabled) {
@@ -192,6 +201,64 @@
 .breadcrumbSeparator {
   color: #CBCBCA;
   font-size: 8px;
+  flex-shrink: 0;
+}
+
+.breadcrumbEllipsisWrapper {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.breadcrumbEllipsis {
+  background: none;
+  border: none;
+  color: #CBCBCA;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.breadcrumbEllipsis:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.breadcrumbDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #242424;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 140px;
+  max-width: 220px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.breadcrumbDropdownItem {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #CBCBCA;
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumbDropdownItem:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .pageList {

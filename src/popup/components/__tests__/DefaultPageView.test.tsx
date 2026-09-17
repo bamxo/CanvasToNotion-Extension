@@ -11,7 +11,8 @@ vi.mock('react-icons/fa', () => ({
   FaFile: () => <span data-testid="mock-file-icon">📄</span>,
   FaExclamationCircle: () => <span data-testid="mock-exclamation-icon">⚠️</span>,
   FaCog: () => <span data-testid="mock-cog-icon">⚙️</span>,
-  FaChevronRight: (props: any) => <span data-testid="mock-chevron-icon" {...props}>›</span>
+  FaChevronRight: (props: any) => <span data-testid="mock-chevron-icon" {...props}>›</span>,
+  FaEllipsisH: () => <span data-testid="mock-ellipsis-icon">…</span>
 }));
 
 // Mock CSS modules
@@ -42,7 +43,11 @@ vi.mock('../PageSelector.module.css', () => ({
     drillIntoButton: 'drill-into-button-mock',
     legend: 'legend-mock',
     legendItem: 'legend-item-mock',
-    legendIcon: 'legend-icon-mock'
+    legendIcon: 'legend-icon-mock',
+    breadcrumbEllipsisWrapper: 'breadcrumb-ellipsis-wrapper-mock',
+    breadcrumbEllipsis: 'breadcrumb-ellipsis-mock',
+    breadcrumbDropdown: 'breadcrumb-dropdown-mock',
+    breadcrumbDropdownItem: 'breadcrumb-dropdown-item-mock'
   }
 }));
 
@@ -434,6 +439,72 @@ describe('DefaultPageView Component', () => {
       expect(screen.getByText('Class Notes')).toBeInTheDocument();
       expect(screen.getByText('Assignments')).toBeInTheDocument();
       expect(screen.queryByText('Unit 1')).not.toBeInTheDocument();
+    });
+
+    describe('deep hierarchies (breadcrumb collapsing)', () => {
+      const deepPages = [
+        { id: 'root', title: 'Root', parentId: null },
+        { id: 'unit', title: 'Unit 1', parentId: 'root' },
+        { id: 'week', title: 'Week 1', parentId: 'unit' },
+        { id: 'lesson', title: 'Lesson A', parentId: 'week' },
+        { id: 'topic', title: 'Topic X', parentId: 'lesson' },
+      ];
+
+      const drillToBottom = () => {
+        // Root -> Unit 1 -> Week 1 -> Lesson A (leaves "Topic X" as the visible leaf)
+        fireEvent.click(screen.getByTestId('drill-into')); // into Root
+        fireEvent.click(screen.getByTestId('drill-into')); // into Unit 1
+        fireEvent.click(screen.getByTestId('drill-into')); // into Week 1
+        fireEvent.click(screen.getByTestId('drill-into')); // into Lesson A
+      };
+
+      it('collapses everything but the last two crumbs behind a "..." when the trail is deep', () => {
+        render(
+          <DefaultPageView pages={deepPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+        );
+
+        drillToBottom();
+
+        expect(screen.getByText('All pages')).toBeInTheDocument();
+        expect(screen.getByText('Week 1')).toBeInTheDocument();
+        expect(screen.getByText('Lesson A')).toBeInTheDocument();
+        expect(screen.queryByText('Root')).not.toBeInTheDocument();
+        expect(screen.queryByText('Unit 1')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Show hidden breadcrumb pages')).toBeInTheDocument();
+      });
+
+      it('opens a dropdown with the hidden crumbs when "..." is clicked, and navigates on selection', () => {
+        render(
+          <DefaultPageView pages={deepPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+        );
+
+        drillToBottom();
+
+        fireEvent.click(screen.getByLabelText('Show hidden breadcrumb pages'));
+        expect(screen.getByRole('menuitem', { name: 'Root' })).toBeInTheDocument();
+        expect(screen.getByRole('menuitem', { name: 'Unit 1' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Unit 1' }));
+
+        // Navigating to "Unit 1" shows its child ("Week 1"), and the trail
+        // collapses back to fitting on one line without an ellipsis.
+        expect(screen.getByText('Week 1')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Show hidden breadcrumb pages')).not.toBeInTheDocument();
+      });
+
+      it('closes the dropdown when clicking outside of it', () => {
+        render(
+          <DefaultPageView pages={deepPages} isLoading={false} onPageSelect={mockOnPageSelect} />
+        );
+
+        drillToBottom();
+        fireEvent.click(screen.getByLabelText('Show hidden breadcrumb pages'));
+        expect(screen.getByRole('menuitem', { name: 'Root' })).toBeInTheDocument();
+
+        fireEvent.mouseDown(document.body);
+
+        expect(screen.queryByRole('menuitem', { name: 'Root' })).not.toBeInTheDocument();
+      });
     });
   });
 
